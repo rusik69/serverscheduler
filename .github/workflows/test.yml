@@ -9,15 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      # Add any required services here (e.g., databases)
-      sqlite:
-        image: alpine:latest
-        options: >-
-          --health-cmd "echo 'SQLite is ready'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -34,19 +25,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc musl-dev
 
+      - name: Create test data directory
+        run: |
+          mkdir -p /tmp/data
+          chmod 777 /tmp/data
+
       - name: Run tests
         run: |
           go test -v ./...
         env:
           CGO_ENABLED: 1
-          DB_PATH: /tmp/test.db
+          DB_PATH: /tmp/data/test.db
+          GIN_MODE: test
 
       - name: Run tests with race detector
         run: |
           go test -race -v ./...
         env:
           CGO_ENABLED: 1
-          DB_PATH: /tmp/test.db
+          DB_PATH: /tmp/data/test.db
+          GIN_MODE: test
 
       - name: Run tests with coverage
         run: |
@@ -54,4 +52,11 @@ jobs:
           go tool cover -func=coverage.out
         env:
           CGO_ENABLED: 1
-          DB_PATH: /tmp/test.db 
+          DB_PATH: /tmp/data/test.db
+          GIN_MODE: test
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out 
