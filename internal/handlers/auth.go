@@ -3,25 +3,34 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/rusik69/serverscheduler/internal/database"
+	"github.com/rusik69/serverscheduler/internal/middleware"
 	"github.com/rusik69/serverscheduler/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Register handles user registration
 func Register(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var req models.RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Validate required fields
+	if req.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+		return
+	}
+	if req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required"})
+		return
+	}
+
 	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
@@ -29,7 +38,7 @@ func Register(c *gin.Context) {
 
 	// Insert user into database
 	_, err = database.GetDB().Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		user.Username, string(hashedPassword), "user")
+		req.Username, string(hashedPassword), "user")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
@@ -40,10 +49,7 @@ func Register(c *gin.Context) {
 
 // Login handles user login
 func Login(c *gin.Context) {
-	var loginRequest struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
+	var loginRequest models.LoginRequest
 
 	if err := c.ShouldBindJSON(&loginRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -71,15 +77,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Generate JWT token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  user.ID,
-		"username": user.Username,
-		"role":     user.Role,
-		"exp":      time.Now().Add(time.Hour * 24).Unix(),
-	})
-
-	tokenString, err := token.SignedString([]byte("your-secret-key")) // In production, use environment variable
+	// Generate JWT token using the middleware's GenerateToken function
+	tokenString, err := middleware.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -97,7 +96,7 @@ func Login(c *gin.Context) {
 
 // GetUserInfo returns information about the current user
 func GetUserInfo(c *gin.Context) {
-	userID, exists := c.Get("user_id")
+	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return

@@ -19,8 +19,8 @@ func CreateServer(c *gin.Context) {
 	}
 
 	result, err := database.GetDB().Exec(
-		"INSERT INTO servers (name, description, status) VALUES (?, ?, ?)",
-		server.Name, server.Description, "available",
+		"INSERT INTO servers (name, status) VALUES (?, ?)",
+		server.Name, "available",
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create server"})
@@ -36,7 +36,7 @@ func CreateServer(c *gin.Context) {
 
 // GetServers returns all servers
 func GetServers(c *gin.Context) {
-	rows, err := database.GetDB().Query("SELECT id, name, description, status FROM servers")
+	rows, err := database.GetDB().Query("SELECT id, name, status FROM servers")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch servers"})
 		return
@@ -46,14 +46,14 @@ func GetServers(c *gin.Context) {
 	var servers []models.Server
 	for rows.Next() {
 		var server models.Server
-		if err := rows.Scan(&server.ID, &server.Name, &server.Description, &server.Status); err != nil {
+		if err := rows.Scan(&server.ID, &server.Name, &server.Status); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan server"})
 			return
 		}
 		servers = append(servers, server)
 	}
 
-	c.JSON(http.StatusOK, servers)
+	c.JSON(http.StatusOK, gin.H{"servers": servers})
 }
 
 // GetServer returns a specific server
@@ -67,9 +67,9 @@ func GetServer(c *gin.Context) {
 
 	var server models.Server
 	err = database.GetDB().QueryRow(
-		"SELECT id, name, description, status FROM servers WHERE id = ?",
+		"SELECT id, name, status FROM servers WHERE id = ?",
 		id,
-	).Scan(&server.ID, &server.Name, &server.Description, &server.Status)
+	).Scan(&server.ID, &server.Name, &server.Status)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -99,8 +99,8 @@ func UpdateServer(c *gin.Context) {
 	}
 
 	_, err = database.GetDB().Exec(
-		"UPDATE servers SET name = ?, description = ?, status = ? WHERE id = ?",
-		server.Name, server.Description, server.Status, id,
+		"UPDATE servers SET name = ?, status = ? WHERE id = ?",
+		server.Name, server.Status, id,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update server"})

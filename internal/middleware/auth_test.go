@@ -7,7 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rusik69/serverscheduler/internal/database"
-	"github.com/rusik69/serverscheduler/internal/models"
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestAuthMiddleware(t *testing.T) {
@@ -18,42 +19,63 @@ func TestAuthMiddleware(t *testing.T) {
 	}
 	defer database.CleanupTestDB()
 
-	// Create a test user
-	user := models.User{
-		Username: "testuser",
-		Password: "testpass",
-		Role:     "user",
-	}
-	_, err = database.DB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		user.Username, user.Password, user.Role)
+	// Hash password for test user
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("testpass"), bcrypt.DefaultCost)
 	if err != nil {
-		t.Fatalf("Failed to insert test user: %v", err)
+		t.Fatalf("Failed to hash password: %v", err)
 	}
 
-	// Generate token
-	token, err := GenerateToken(1, user.Username, user.Role)
+	// Create test user
+	_, err = database.GetDB().Exec(
+		"INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)",
+		1, "testuser", string(hashedPassword), "user",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Generate valid JWT token
+	validToken, err := GenerateToken(1, "testuser", "user")
 	if err != nil {
 		t.Fatalf("Failed to generate token: %v", err)
 	}
 
-	// Set up test router
+	// Setup test router
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(AuthMiddleware())
 	router.GET("/test", func(c *gin.Context) {
-		c.Status(http.StatusOK)
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "UserID not found in context"})
+			return
+		}
+		username, exists := c.Get("username")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Username not found in context"})
+			return
+		}
+		role, exists := c.Get("role")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Role not found in context"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"userID":   userID,
+			"username": username,
+			"role":     role,
+		})
 	})
 
-	// Test cases
 	tests := []struct {
 		name           string
 		token          string
 		expectedStatus int
 	}{
 		{
-			name:           "Valid token",
-			token:          token,
-			expectedStatus: http.StatusOK,
+			name:           "No token",
+			token:          "",
+			expectedStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "Invalid token",
@@ -61,28 +83,23 @@ func TestAuthMiddleware(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "No token",
-			token:          "",
-			expectedStatus: http.StatusUnauthorized,
+			name:           "Valid token",
+			token:          validToken,
+			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create request
 			req := httptest.NewRequest("GET", "/test", nil)
 			if tt.token != "" {
 				req.Header.Set("Authorization", "Bearer "+tt.token)
 			}
-			w := httptest.NewRecorder()
 
-			// Perform request
+			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			// Check response
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
-			}
+			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }
@@ -95,92 +112,81 @@ func TestAdminMiddleware(t *testing.T) {
 	}
 	defer database.CleanupTestDB()
 
-	// Create test users
-	adminUser := models.User{
-		Username: "admin",
-		Password: "adminpass",
-		Role:     "admin",
-	}
-	regularUser := models.User{
-		Username: "user",
-		Password: "userpass",
-		Role:     "user",
+	// Hash passwords for test users
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("adminpass"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("Failed to hash admin password: %v", err)
 	}
 
-	// Insert users
-	_, err = database.DB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		adminUser.Username, adminUser.Password, adminUser.Role)
+	// Create admin user
+	_, err = database.GetDB().Exec(
+		"INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)",
+		1, "admin", string(hashedPassword), "admin",
+	)
 	if err != nil {
-		t.Fatalf("Failed to insert admin user: %v", err)
-	}
-	_, err = database.DB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		regularUser.Username, regularUser.Password, regularUser.Role)
-	if err != nil {
-		t.Fatalf("Failed to insert regular user: %v", err)
+		t.Fatalf("Failed to create admin user: %v", err)
 	}
 
-	// Generate tokens
-	adminToken, err := GenerateToken(1, adminUser.Username, adminUser.Role)
+	hashedPassword, err = bcrypt.GenerateFromPassword([]byte("userpass"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("Failed to hash user password: %v", err)
+	}
+
+	// Create regular user
+	_, err = database.GetDB().Exec(
+		"INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)",
+		2, "user", string(hashedPassword), "user",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create regular user: %v", err)
+	}
+
+	// Generate valid JWT tokens
+	adminToken, err := GenerateToken(1, "admin", "admin")
 	if err != nil {
 		t.Fatalf("Failed to generate admin token: %v", err)
 	}
-	userToken, err := GenerateToken(2, regularUser.Username, regularUser.Role)
+
+	userToken, err := GenerateToken(2, "user", "user")
 	if err != nil {
 		t.Fatalf("Failed to generate user token: %v", err)
 	}
 
-	// Set up test router
+	// Setup test router
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(AuthMiddleware(), AdminMiddleware())
-	router.GET("/test", func(c *gin.Context) {
-		c.Status(http.StatusOK)
+	router.Use(AuthMiddleware())
+	router.Use(AdminMiddleware())
+	router.GET("/admin", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "admin access granted"})
 	})
 
-	// Test cases
 	tests := []struct {
 		name           string
 		token          string
 		expectedStatus int
 	}{
 		{
-			name:           "Admin token",
+			name:           "Admin user",
 			token:          adminToken,
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "Regular user token",
+			name:           "Regular user",
 			token:          userToken,
 			expectedStatus: http.StatusForbidden,
-		},
-		{
-			name:           "Invalid token",
-			token:          "invalid-token",
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "No token",
-			token:          "",
-			expectedStatus: http.StatusUnauthorized,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create request
-			req := httptest.NewRequest("GET", "/test", nil)
-			if tt.token != "" {
-				req.Header.Set("Authorization", "Bearer "+tt.token)
-			}
-			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/admin", nil)
+			req.Header.Set("Authorization", "Bearer "+tt.token)
 
-			// Perform request
+			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			// Check response
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
-			}
+			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }

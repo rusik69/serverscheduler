@@ -11,7 +11,7 @@ import (
 
 var db *sql.DB
 
-// Init initializes the database connection and creates tables if they don't exist
+// Init initializes the database connection and creates tables
 func Init() error {
 	var err error
 	db, err = sql.Open("sqlite3", "./data/serverscheduler.db")
@@ -19,31 +19,44 @@ func Init() error {
 		return err
 	}
 
-	// Create tables if they don't exist
+	// Create users table
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE NOT NULL,
 			password TEXT NOT NULL,
-			role TEXT NOT NULL
-		);
+			role TEXT NOT NULL DEFAULT 'user'
+		)
+	`)
+	if err != nil {
+		return err
+	}
 
+	// Create servers table
+	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS servers (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL
-		);
+			name TEXT UNIQUE NOT NULL,
+			status TEXT NOT NULL DEFAULT 'available'
+		)
+	`)
+	if err != nil {
+		return err
+	}
 
+	// Create reservations table
+	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS reservations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id INTEGER NOT NULL,
 			user_id INTEGER NOT NULL,
+			server_id INTEGER NOT NULL,
+			server_name TEXT NOT NULL,
 			start_time DATETIME NOT NULL,
 			end_time DATETIME NOT NULL,
-			status TEXT NOT NULL,
-			FOREIGN KEY (server_id) REFERENCES servers (id),
-			FOREIGN KEY (user_id) REFERENCES users (id)
-		);
+			status TEXT NOT NULL DEFAULT 'active',
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		)
 	`)
 	if err != nil {
 		return err
@@ -136,45 +149,55 @@ func InitDB() error {
 	return nil
 }
 
-// InitTestDB initializes a test database with proper schema
+// InitTestDB initializes a test database
 func InitTestDB() error {
-	// Use in-memory SQLite for tests
 	var err error
 	db, err = sql.Open("sqlite3", ":memory:")
 	if err != nil {
-		return fmt.Errorf("failed to open test database: %v", err)
+		return err
 	}
 
-	// Create tables
+	// Create users table
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE NOT NULL,
 			password TEXT NOT NULL,
-			role TEXT NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS servers (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			description TEXT,
-			status TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-
-		CREATE TABLE IF NOT EXISTS reservations (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			server_id INTEGER NOT NULL,
-			user_id INTEGER NOT NULL,
-			start_time DATETIME NOT NULL,
-			end_time DATETIME NOT NULL,
-			FOREIGN KEY (server_id) REFERENCES servers(id),
-			FOREIGN KEY (user_id) REFERENCES users(id)
-		);
+			role TEXT NOT NULL DEFAULT 'user'
+		)
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to create test tables: %v", err)
+		return err
+	}
+
+	// Create servers table
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS servers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT UNIQUE NOT NULL,
+			status TEXT NOT NULL DEFAULT 'available'
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create reservations table
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS reservations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			server_id INTEGER NOT NULL,
+			server_name TEXT NOT NULL,
+			start_time DATETIME NOT NULL,
+			end_time DATETIME NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active',
+			FOREIGN KEY (user_id) REFERENCES users(id),
+			FOREIGN KEY (server_id) REFERENCES servers(id)
+		)
+	`)
+	if err != nil {
+		return err
 	}
 
 	return nil

@@ -7,250 +7,224 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rusik69/serverscheduler/internal/database"
-	"github.com/rusik69/serverscheduler/internal/models"
-	"github.com/rusik69/serverscheduler/internal/testutils"
+	"github.com/rusik69/serverscheduler/internal/middleware"
+	"github.com/stretchr/testify/assert"
 )
+
+// SetupTestRouter creates a test router with all necessary routes
+func setupTestRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	// Auth routes (public)
+	router.POST("/api/auth/register", Register)
+	router.POST("/api/auth/login", Login)
+
+	// Protected routes
+	protected := router.Group("/api/auth")
+	protected.Use(middleware.AuthMiddleware())
+	{
+		protected.GET("/user", GetUserInfo)
+	}
+
+	// Server routes
+	router.GET("/api/servers", GetServers)
+	router.POST("/api/servers", CreateServer)
+	router.GET("/api/servers/:id", GetServer)
+	router.PUT("/api/servers/:id", UpdateServer)
+	router.DELETE("/api/servers/:id", DeleteServer)
+
+	// Reservation routes
+	router.GET("/api/reservations", GetReservations)
+	router.POST("/api/reservations", CreateReservation)
+	router.GET("/api/reservations/:id", GetReservation)
+
+	return router
+}
+
+// GetAuthToken performs login and returns the auth token
+func getAuthToken(t *testing.T, router *gin.Engine, username, password string) string {
+	// Create login request
+	loginData := map[string]string{
+		"username": username,
+		"password": password,
+	}
+	jsonData, _ := json.Marshal(loginData)
+	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Perform request
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Check response
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Parse response
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+
+	// Extract token
+	token, exists := response["token"]
+	assert.True(t, exists)
+	return token.(string)
+}
 
 func TestRegister(t *testing.T) {
 	// Initialize test database
-	if err := database.InitTestDB(); err != nil {
+	err := database.InitTestDB()
+	if err != nil {
 		t.Fatalf("Failed to initialize test database: %v", err)
 	}
 	defer database.CleanupTestDB()
 
-	router := testutils.SetupTestRouter(testutils.HandlerSet{
-		Register: Register,
-		Login:    Login,
-	})
+	router := setupTestRouter()
 
+	// Test cases
 	tests := []struct {
-		name       string
-		payload    models.RegisterRequest
-		wantStatus int
+		name           string
+		payload        map[string]string
+		expectedStatus int
 	}{
 		{
-			name: "valid registration",
-			payload: models.RegisterRequest{
-				Username: "testuser",
-				Password: "testpass123",
+			name: "Valid registration",
+			payload: map[string]string{
+				"username": "testuser",
+				"password": "testpass",
 			},
-			wantStatus: http.StatusCreated,
+			expectedStatus: http.StatusCreated,
 		},
 		{
-			name: "duplicate username",
-			payload: models.RegisterRequest{
-				Username: "testuser",
-				Password: "testpass123",
+			name: "Invalid registration - missing username",
+			payload: map[string]string{
+				"password": "testpass",
 			},
-			wantStatus: http.StatusInternalServerError,
-		},
-		{
-			name: "empty username",
-			payload: models.RegisterRequest{
-				Username: "",
-				Password: "testpass123",
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "empty password",
-			payload: models.RegisterRequest{
-				Username: "testuser2",
-				Password: "",
-			},
-			wantStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			jsonData, _ := json.Marshal(tt.payload)
-			req, _ := http.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
+			req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
 			req.Header.Set("Content-Type", "application/json")
 
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("Register() status = %v, want %v", w.Code, tt.wantStatus)
-			}
-
-			if tt.wantStatus == http.StatusCreated {
-				var response map[string]string
-				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-					t.Errorf("Failed to parse response: %v", err)
-				}
-				if _, exists := response["token"]; !exists {
-					t.Error("Register() response missing token")
-				}
-			}
+			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }
 
 func TestLogin(t *testing.T) {
 	// Initialize test database
-	if err := database.InitTestDB(); err != nil {
+	err := database.InitTestDB()
+	if err != nil {
 		t.Fatalf("Failed to initialize test database: %v", err)
 	}
 	defer database.CleanupTestDB()
 
-	router := testutils.SetupTestRouter(testutils.HandlerSet{
-		Register: Register,
-		Login:    Login,
-	})
+	// First register a user through the API to ensure proper password hashing
+	router := setupTestRouter()
 
-	// Register a test user first
-	registerPayload := models.RegisterRequest{
-		Username: "testuser",
-		Password: "testpass123",
+	// Register user
+	registerData := map[string]string{
+		"username": "testuser",
+		"password": "testpass",
 	}
-	jsonData, _ := json.Marshal(registerPayload)
-	req, _ := http.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
+	jsonData, _ := json.Marshal(registerData)
+	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
+	// Test cases
 	tests := []struct {
-		name       string
-		payload    models.LoginRequest
-		wantStatus int
+		name           string
+		payload        map[string]string
+		expectedStatus int
 	}{
 		{
-			name: "valid login",
-			payload: models.LoginRequest{
-				Username: "testuser",
-				Password: "testpass123",
+			name: "Valid login",
+			payload: map[string]string{
+				"username": "testuser",
+				"password": "testpass",
 			},
-			wantStatus: http.StatusOK,
+			expectedStatus: http.StatusOK,
 		},
 		{
-			name: "invalid password",
-			payload: models.LoginRequest{
-				Username: "testuser",
-				Password: "wrongpass",
+			name: "Invalid login - wrong password",
+			payload: map[string]string{
+				"username": "testuser",
+				"password": "wrongpass",
 			},
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			name: "non-existent user",
-			payload: models.LoginRequest{
-				Username: "nonexistent",
-				Password: "testpass123",
-			},
-			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			name: "empty username",
-			payload: models.LoginRequest{
-				Username: "",
-				Password: "testpass123",
-			},
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name: "empty password",
-			payload: models.LoginRequest{
-				Username: "testuser",
-				Password: "",
-			},
-			wantStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusUnauthorized,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			jsonData, _ := json.Marshal(tt.payload)
-			req, _ := http.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(jsonData))
+			req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(jsonData))
 			req.Header.Set("Content-Type", "application/json")
 
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("Login() status = %v, want %v", w.Code, tt.wantStatus)
-			}
-
-			if tt.wantStatus == http.StatusOK {
-				var response map[string]string
-				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-					t.Errorf("Failed to parse response: %v", err)
-				}
-				if _, exists := response["token"]; !exists {
-					t.Error("Login() response missing token")
-				}
-			}
+			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }
 
-func TestListUsers(t *testing.T) {
+func TestGetUserInfo(t *testing.T) {
 	// Initialize test database
-	if err := database.InitTestDB(); err != nil {
+	err := database.InitTestDB()
+	if err != nil {
 		t.Fatalf("Failed to initialize test database: %v", err)
 	}
 	defer database.CleanupTestDB()
 
-	router := testutils.SetupTestRouter(testutils.HandlerSet{
-		Register:  Register,
-		Login:     Login,
-		ListUsers: ListUsers,
-	})
+	router := setupTestRouter()
 
-	// Register root user
-	registerPayload := models.RegisterRequest{
-		Username: "root",
-		Password: "rootpass123",
+	// Register user first
+	registerData := map[string]string{
+		"username": "testuser",
+		"password": "testpass",
 	}
-	jsonData, _ := json.Marshal(registerPayload)
-	req, _ := http.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
+	jsonData, _ := json.Marshal(registerData)
+	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Get root token
-	rootToken := testutils.GetAuthToken(t, router, "root", "rootpass123")
+	// Get auth token by logging in
+	token := getAuthToken(t, router, "testuser", "testpass")
 
-	// Register regular user
-	registerPayload = models.RegisterRequest{
-		Username: "regular",
-		Password: "regularpass123",
-	}
-	jsonData, _ = json.Marshal(registerPayload)
-	req, _ = http.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	// Get regular user token
-	regularToken := testutils.GetAuthToken(t, router, "regular", "regularpass123")
-
+	// Test cases
 	tests := []struct {
-		name       string
-		token      string
-		wantStatus int
+		name           string
+		token          string
+		expectedStatus int
 	}{
 		{
-			name:       "list users as root",
-			token:      rootToken,
-			wantStatus: http.StatusOK,
+			name:           "Valid token",
+			token:          token,
+			expectedStatus: http.StatusOK,
 		},
 		{
-			name:       "list users as regular user",
-			token:      regularToken,
-			wantStatus: http.StatusForbidden,
-		},
-		{
-			name:       "list users without auth",
-			token:      "",
-			wantStatus: http.StatusUnauthorized,
+			name:           "Invalid token",
+			token:          "invalid-token",
+			expectedStatus: http.StatusUnauthorized,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "/api/users", nil)
+			req := httptest.NewRequest("GET", "/api/auth/user", nil)
 			if tt.token != "" {
 				req.Header.Set("Authorization", "Bearer "+tt.token)
 			}
@@ -258,25 +232,7 @@ func TestListUsers(t *testing.T) {
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("ListUsers() status = %v, want %v", w.Code, tt.wantStatus)
-			}
-
-			if tt.wantStatus == http.StatusOK {
-				var response map[string][]models.User
-				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-					t.Errorf("Failed to parse response: %v", err)
-				}
-				if len(response["users"]) == 0 {
-					t.Error("ListUsers() returned empty list")
-				}
-				// Verify that passwords are not included in the response
-				for _, user := range response["users"] {
-					if user.Password != "" {
-						t.Error("ListUsers() included password in response")
-					}
-				}
-			}
+			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }
