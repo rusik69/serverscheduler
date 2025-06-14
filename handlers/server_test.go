@@ -33,22 +33,6 @@ func setupTestRouter() *gin.Engine {
 	return r
 }
 
-func getAuthToken(t *testing.T, router *gin.Engine, username, password string) string {
-	loginPayload := models.LoginRequest{
-		Username: username,
-		Password: password,
-	}
-	jsonData, _ := json.Marshal(loginPayload)
-	req, _ := http.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	var response map[string]string
-	json.Unmarshal(w.Body.Bytes(), &response)
-	return response["token"]
-}
-
 func TestCreateServer(t *testing.T) {
 	// Initialize test database
 	if err := database.InitTestDB(); err != nil {
