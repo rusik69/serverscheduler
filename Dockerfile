@@ -2,7 +2,7 @@
 FROM golang:1.22-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache gcc musl-dev
+RUN apk add --no-cache gcc musl-dev make
 
 # Set working directory
 WORKDIR /app
@@ -23,7 +23,7 @@ RUN make build
 FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata make
 
 # Set working directory
 WORKDIR /app

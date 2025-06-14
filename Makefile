@@ -10,7 +10,7 @@ DOCKER_PLATFORMS=linux/amd64,linux/arm64
 
 # Build the application
 build:
-	go build -o $(BINARY_NAME) .
+	CGO_ENABLED=1 GOOS=linux go build -o $(BINARY_NAME) .
 
 # Run the application
 run:
