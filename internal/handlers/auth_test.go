@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rusik69/serverscheduler/database"
-	"github.com/rusik69/serverscheduler/models"
-	"github.com/rusik69/serverscheduler/testutils"
+	"github.com/rusik69/serverscheduler/internal/database"
+	"github.com/rusik69/serverscheduler/internal/models"
+	"github.com/rusik69/serverscheduler/internal/testutils"
 )
 
 func TestRegister(t *testing.T) {

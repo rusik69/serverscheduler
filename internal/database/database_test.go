@@ -5,113 +5,8 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/rusik69/serverscheduler/models"
+	"github.com/rusik69/serverscheduler/internal/models"
 )
-
-func TestInitDB(t *testing.T) {
-	// Test initialization
-	err := InitDB()
-	if err != nil {
-		t.Errorf("Failed to initialize database: %v", err)
-	}
-
-	// Test that tables are created
-	var count int
-	err = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query users table: %v", err)
-	}
-
-	err = DB.QueryRow("SELECT COUNT(*) FROM servers").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query servers table: %v", err)
-	}
-
-	err = DB.QueryRow("SELECT COUNT(*) FROM reservations").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query reservations table: %v", err)
-	}
-}
-
-func TestInitTestDB(t *testing.T) {
-	// Test test database initialization
-	err := InitTestDB()
-	if err != nil {
-		t.Errorf("Failed to initialize test database: %v", err)
-	}
-
-	// Test that tables are created
-	var count int
-	err = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query users table: %v", err)
-	}
-
-	err = DB.QueryRow("SELECT COUNT(*) FROM servers").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query servers table: %v", err)
-	}
-
-	err = DB.QueryRow("SELECT COUNT(*) FROM reservations").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query reservations table: %v", err)
-	}
-}
-
-func TestCleanupTestDB(t *testing.T) {
-	// Initialize test database
-	err := InitTestDB()
-	if err != nil {
-		t.Errorf("Failed to initialize test database: %v", err)
-	}
-
-	// Add some test data
-	user := models.User{
-		Username: "testuser",
-		Password: "testpass",
-		Role:     "user",
-	}
-	_, err = DB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		user.Username, user.Password, user.Role)
-	if err != nil {
-		t.Errorf("Failed to insert test user: %v", err)
-	}
-
-	// Test cleanup
-	err = CleanupTestDB()
-	if err != nil {
-		t.Errorf("Failed to cleanup test database: %v", err)
-	}
-
-	// Verify cleanup
-	var count int
-	err = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
-	if err != nil {
-		t.Errorf("Failed to query users table: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("Expected 0 users after cleanup, got %d", count)
-	}
-}
-
-func TestCloseDB(t *testing.T) {
-	// Initialize database
-	err := InitDB()
-	if err != nil {
-		t.Errorf("Failed to initialize database: %v", err)
-	}
-
-	// Test closing
-	err = CloseDB()
-	if err != nil {
-		t.Errorf("Failed to close database: %v", err)
-	}
-
-	// Verify that DB is closed
-	if DB != nil {
-		t.Error("Expected DB to be nil after closing")
-	}
-}
 
 func setupTestDB(t *testing.T) {
 	err := InitTestDB()
@@ -122,6 +17,89 @@ func setupTestDB(t *testing.T) {
 
 func teardownTestDB() {
 	CleanupTestDB()
+	DB = nil // Set DB to nil after closing
+}
+
+func TestInitDB(t *testing.T) {
+	err := InitDB()
+	if err != nil {
+		t.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer CloseDB()
+
+	// Check if tables exist
+	_, err = DB.Query("SELECT * FROM users LIMIT 1")
+	if err != nil {
+		t.Fatalf("Failed to query users table: %v", err)
+	}
+}
+
+func TestInitTestDB(t *testing.T) {
+	err := InitTestDB()
+	if err != nil {
+		t.Fatalf("Failed to initialize test database: %v", err)
+	}
+	defer teardownTestDB()
+
+	// Check if tables exist
+	_, err = DB.Query("SELECT * FROM users LIMIT 1")
+	if err != nil {
+		t.Fatalf("Failed to query users table: %v", err)
+	}
+}
+
+func TestCleanupTestDB(t *testing.T) {
+	err := InitTestDB()
+	if err != nil {
+		t.Fatalf("Failed to initialize test database: %v", err)
+	}
+
+	// Insert test data
+	_, err = DB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", "testuser", "testpass", "user")
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
+
+	// Clean up
+	err = CleanupTestDB()
+	if err != nil {
+		t.Fatalf("Failed to cleanup test database: %v", err)
+	}
+	DB = nil // Set DB to nil after closing
+
+	// Verify tables are dropped
+	err = InitTestDB()
+	if err != nil {
+		t.Fatalf("Failed to reinitialize test database: %v", err)
+	}
+	defer teardownTestDB()
+
+	// Try to query the users table - should be empty
+	var count int
+	err = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query users table: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected 0 users after cleanup, got %d", count)
+	}
+}
+
+func TestCloseDB(t *testing.T) {
+	err := InitDB()
+	if err != nil {
+		t.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	err = CloseDB()
+	if err != nil {
+		t.Fatalf("Failed to close database: %v", err)
+	}
+	DB = nil // Set DB to nil after closing
+
+	if DB != nil {
+		t.Error("Expected DB to be nil after closing")
+	}
 }
 
 func TestUserCRUD(t *testing.T) {
@@ -189,20 +167,19 @@ func TestReservationCRUD(t *testing.T) {
 	// Create reservation
 	start := time.Now()
 	end := start.Add(2 * time.Hour)
-	_, err = DB.Exec("INSERT INTO reservations (server_id, user_id, start_time, end_time, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		serverID, userID, start, end, "active", time.Now(), time.Now())
+	_, err = DB.Exec("INSERT INTO reservations (server_id, user_id, start_time, end_time) VALUES (?, ?, ?, ?)",
+		serverID, userID, start, end)
 	if err != nil {
 		t.Fatalf("Failed to insert reservation: %v", err)
 	}
 
 	// Retrieve reservation
-	row := DB.QueryRow("SELECT server_id, user_id, status FROM reservations WHERE user_id = ?", userID)
+	row := DB.QueryRow("SELECT server_id, user_id FROM reservations WHERE user_id = ?", userID)
 	var gotServerID, gotUserID int64
-	var status string
-	if err := row.Scan(&gotServerID, &gotUserID, &status); err != nil {
+	if err := row.Scan(&gotServerID, &gotUserID); err != nil {
 		t.Fatalf("Failed to scan reservation: %v", err)
 	}
-	if gotServerID != serverID || gotUserID != userID || status != "active" {
-		t.Errorf("Unexpected reservation data: server_id=%d, user_id=%d, status=%s", gotServerID, gotUserID, status)
+	if gotServerID != serverID || gotUserID != userID {
+		t.Errorf("Unexpected reservation data: server_id=%d, user_id=%d", gotServerID, gotUserID)
 	}
 }

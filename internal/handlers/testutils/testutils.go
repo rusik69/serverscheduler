@@ -8,24 +8,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rusik69/serverscheduler/middleware"
-	"github.com/rusik69/serverscheduler/models"
+	"github.com/rusik69/serverscheduler/internal/handlers"
+	"github.com/rusik69/serverscheduler/internal/middleware"
+	"github.com/rusik69/serverscheduler/internal/models"
 )
 
-// HandlerSet contains all the handlers needed for testing
-type HandlerSet struct {
-	Register          func(*gin.Context)
-	Login             func(*gin.Context)
-	CreateServer      func(*gin.Context)
-	ListServers       func(*gin.Context)
-	CreateReservation func(*gin.Context)
-	ListReservations  func(*gin.Context)
-	CancelReservation func(*gin.Context)
-	ListUsers         func(*gin.Context)
-}
-
 // SetupTestRouter creates a new router for testing
-func SetupTestRouter(handlers HandlerSet) *gin.Engine {
+func SetupTestRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
 
@@ -42,7 +31,6 @@ func SetupTestRouter(handlers HandlerSet) *gin.Engine {
 		protected.POST("/reservations", handlers.CreateReservation)
 		protected.GET("/reservations", handlers.ListReservations)
 		protected.DELETE("/reservations/:id", handlers.CancelReservation)
-		protected.GET("/users", handlers.ListUsers)
 	}
 
 	return router

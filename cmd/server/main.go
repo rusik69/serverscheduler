@@ -7,9 +7,9 @@ import (
 	"math/big"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rusik69/serverscheduler/database"
-	"github.com/rusik69/serverscheduler/handlers"
-	"github.com/rusik69/serverscheduler/middleware"
+	"github.com/rusik69/serverscheduler/internal/database"
+	"github.com/rusik69/serverscheduler/internal/handlers"
+	"github.com/rusik69/serverscheduler/internal/middleware"
 	"golang.org/x/crypto/bcrypt"
 )
 

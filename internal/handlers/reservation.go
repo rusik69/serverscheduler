@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rusik69/serverscheduler/database"
-	"github.com/rusik69/serverscheduler/models"
+	"github.com/rusik69/serverscheduler/internal/database"
+	"github.com/rusik69/serverscheduler/internal/models"
 )
 
 // CreateReservation handles reservation creation
