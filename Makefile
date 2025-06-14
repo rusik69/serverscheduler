@@ -7,6 +7,7 @@ BINARY_NAME=serverscheduler
 DOCKER_IMAGE ?= serverscheduler
 DOCKER_TAG ?= latest
 DOCKER_PLATFORMS=linux/amd64,linux/arm64
+DOCKER_PLATFORM_LOAD=linux/amd64
 
 # Build the application
 build:
@@ -28,7 +29,7 @@ clean:
 # Build Docker image
 docker-build:
 	docker buildx build \
-		--platform $(DOCKER_PLATFORMS) \
+		--platform $(DOCKER_PLATFORM_LOAD) \
 		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
 		--cache-from type=registry,ref=$(DOCKER_IMAGE):latest \
 		--cache-to type=registry,ref=$(DOCKER_IMAGE):latest \
