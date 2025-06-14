@@ -1,8 +1,8 @@
 # Makefile for ServerScheduler
 
 BINARY=bin/server
-DOCKER_IMAGE=serverscheduler
-DOCKER_TAG=latest
+DOCKER_IMAGE ?= serverscheduler
+DOCKER_TAG ?= latest
 DOCKER_DATA_DIR=$(shell pwd)/data
 DOCKER_PLATFORMS=linux/amd64,linux/arm64
 

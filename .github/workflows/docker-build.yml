@@ -50,14 +50,11 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          # Update Makefile variables
-          FULL_IMAGE_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          sed -i "s/DOCKER_IMAGE=.*/DOCKER_IMAGE=${FULL_IMAGE_NAME}/" Makefile
-          sed -i "s/DOCKER_TAG=.*/DOCKER_TAG=${{ steps.meta.outputs.tags }}/" Makefile
-          
-          # Build and push
           make docker-build
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             make docker-push
           fi
+        env:
+          DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DOCKER_TAG: ${{ steps.meta.outputs.tags }}
         timeout-minutes: 5 
