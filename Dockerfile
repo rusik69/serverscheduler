@@ -1,8 +1,8 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
 
-# Install git and build dependencies
-RUN apk add --no-cache git gcc musl-dev
+# Install build dependencies
+RUN apk add --no-cache gcc musl-dev
 
 # Set working directory
 WORKDIR /app
@@ -17,27 +17,25 @@ RUN go mod download
 COPY . .
 
 # Build the application with CGO enabled
-RUN CGO_ENABLED=1 GOOS=linux go build -o /app/bin/server ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux go build -o serverscheduler .
 
 # Final stage
 FROM alpine:latest
 
-# Install ca-certificates and SQLite
-RUN apk --no-cache add ca-certificates sqlite
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
 
+# Set working directory
 WORKDIR /app
 
-# Create data directory for SQLite database
+# Copy the binary from builder
+COPY --from=builder /app/serverscheduler .
+
+# Create data directory
 RUN mkdir -p /app/data
 
-# Copy the binary from builder
-COPY --from=builder /app/bin/server .
-
-# Expose port 8080
+# Expose port
 EXPOSE 8080
 
-# Set environment variable for database path
-ENV DB_PATH=/app/data/server_scheduler.db
-
 # Run the application
-CMD ["./server"] 
+CMD ["./serverscheduler"] 
