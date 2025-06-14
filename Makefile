@@ -4,8 +4,9 @@ BINARY=bin/server
 DOCKER_IMAGE=serverscheduler
 DOCKER_TAG=latest
 DOCKER_DATA_DIR=$(shell pwd)/data
+DOCKER_PLATFORMS=linux/amd64,linux/arm64
 
-.PHONY: all build test clean docker-build docker-run docker-clean
+.PHONY: all build test clean docker-build docker-run docker-clean docker-push
 
 all: build
 
@@ -20,7 +21,21 @@ clean:
 	rm -rf bin
 
 docker-build:
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	docker buildx build \
+		--platform $(DOCKER_PLATFORMS) \
+		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		--cache-from type=registry,ref=$(DOCKER_IMAGE):buildcache \
+		--cache-to type=registry,ref=$(DOCKER_IMAGE):buildcache,mode=max \
+		.
+
+docker-push:
+	docker buildx build \
+		--platform $(DOCKER_PLATFORMS) \
+		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		--push \
+		--cache-from type=registry,ref=$(DOCKER_IMAGE):buildcache \
+		--cache-to type=registry,ref=$(DOCKER_IMAGE):buildcache,mode=max \
+		.
 
 docker-run:
 	@mkdir -p $(DOCKER_DATA_DIR)
