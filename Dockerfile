@@ -17,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Build the application with CGO enabled
-RUN CGO_ENABLED=1 GOOS=linux go build -o serverscheduler .
+RUN make build
 
 # Final stage
 FROM alpine:latest
