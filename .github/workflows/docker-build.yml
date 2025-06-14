@@ -57,6 +57,6 @@ jobs:
           # Build and push
           make docker-build
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tags }}
+            make docker-push
           fi
         timeout-minutes: 5 
