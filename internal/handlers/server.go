@@ -1,49 +1,42 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rusik69/serverscheduler/internal/database"
 	"github.com/rusik69/serverscheduler/internal/models"
 )
 
-// CreateServer handles server creation (root only)
+// CreateServer handles server creation
 func CreateServer(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can create servers"})
-		return
-	}
-
-	var req models.Server
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var server models.Server
+	if err := c.ShouldBindJSON(&server); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Server name cannot be empty"})
-		return
-	}
-
-	result, err := database.DB.Exec(
+	result, err := database.GetDB().Exec(
 		"INSERT INTO servers (name, description, status) VALUES (?, ?, ?)",
-		req.Name, req.Description, "available",
+		server.Name, server.Description, "available",
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create server"})
 		return
 	}
 
-	serverID, _ := result.LastInsertId()
-	c.JSON(http.StatusCreated, gin.H{"id": serverID})
+	id, _ := result.LastInsertId()
+	server.ID = id
+	server.Status = "available"
+
+	c.JSON(http.StatusCreated, server)
 }
 
-// ListServers handles listing all servers
-func ListServers(c *gin.Context) {
-	rows, err := database.DB.Query("SELECT id, name, description, status, created_at, updated_at FROM servers")
+// GetServers returns all servers
+func GetServers(c *gin.Context) {
+	rows, err := database.GetDB().Query("SELECT id, name, description, status FROM servers")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch servers"})
 		return
@@ -53,13 +46,85 @@ func ListServers(c *gin.Context) {
 	var servers []models.Server
 	for rows.Next() {
 		var server models.Server
-		err := rows.Scan(&server.ID, &server.Name, &server.Description, &server.Status, &server.CreatedAt, &server.UpdatedAt)
-		if err != nil {
+		if err := rows.Scan(&server.ID, &server.Name, &server.Description, &server.Status); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan server"})
 			return
 		}
 		servers = append(servers, server)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"servers": servers})
+	c.JSON(http.StatusOK, servers)
+}
+
+// GetServer returns a specific server
+func GetServer(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	var server models.Server
+	err = database.GetDB().QueryRow(
+		"SELECT id, name, description, status FROM servers WHERE id = ?",
+		id,
+	).Scan(&server.ID, &server.Name, &server.Description, &server.Status)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch server"})
+		return
+	}
+
+	c.JSON(http.StatusOK, server)
+}
+
+// UpdateServer handles server updates
+func UpdateServer(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	var server models.Server
+	if err := c.ShouldBindJSON(&server); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_, err = database.GetDB().Exec(
+		"UPDATE servers SET name = ?, description = ?, status = ? WHERE id = ?",
+		server.Name, server.Description, server.Status, id,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update server"})
+		return
+	}
+
+	server.ID = id
+	c.JSON(http.StatusOK, server)
+}
+
+// DeleteServer handles server deletion
+func DeleteServer(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
+		return
+	}
+
+	_, err = database.GetDB().Exec("DELETE FROM servers WHERE id = ?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Server deleted successfully"})
 }

@@ -1,6 +1,6 @@
 # Makefile for ServerScheduler
 
-.PHONY: build run test clean docker-build docker-run docker-push
+.PHONY: all build-backend build-frontend run test clean docker-build docker-run frontend-serve
 
 # Build variables
 BINARY_NAME=serverscheduler
@@ -8,13 +8,19 @@ DOCKER_IMAGE ?= serverscheduler
 DOCKER_TAG ?= latest
 DOCKER_PLATFORMS=linux/amd64,linux/arm64
 
-# Build the application
-build:
-	go build -o $(BINARY_NAME) ./cmd/server
+all: build-backend build-frontend
+
+# Build the backend
+build-backend:
+	CGO_ENABLED=1 go build -o $(BINARY_NAME) ./cmd/server
+
+# Build the frontend
+build-frontend:
+	cd frontend && npm install && npm run build
 
 # Run the application
-run:
-	go run ./cmd/server
+run: build-backend
+	./$(BINARY_NAME)
 
 # Run tests
 test:
@@ -24,6 +30,8 @@ test:
 clean:
 	go clean
 	rm -f $(BINARY_NAME)
+	rm -rf bin/
+	rm -rf frontend/dist/
 
 # Build Docker image
 docker-build:
@@ -41,4 +49,8 @@ docker-push:
 
 # Run Docker container
 docker-run:
-	docker run -p 8080:8080 -v $(PWD)/data:/app/data $(DOCKER_IMAGE):$(DOCKER_TAG) 
+	docker run -p 8080:8080 -v $(PWD)/data:/app/data $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+# Serve frontend in development mode
+frontend-serve:
+	cd frontend && npm install && npm run serve 

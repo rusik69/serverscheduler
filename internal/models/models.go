@@ -24,14 +24,15 @@ type Server struct {
 
 // Reservation represents a server reservation
 type Reservation struct {
-	ID        int64     `json:"id"`
-	ServerID  int64     `json:"server_id"`
-	UserID    int64     `json:"user_id"`
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
-	Status    string    `json:"status"` // active, cancelled, completed
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         int64     `json:"id"`
+	ServerID   int64     `json:"server_id"`
+	ServerName string    `json:"server_name"`
+	UserID     int64     `json:"user_id"`
+	StartTime  time.Time `json:"start_time"`
+	EndTime    time.Time `json:"end_time"`
+	Status     string    `json:"status"` // active, cancelled, completed
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // LoginRequest represents the login request payload

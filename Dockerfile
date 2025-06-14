@@ -1,35 +1,31 @@
-# Build stage
-FROM golang:1.22-alpine AS builder
+# Build frontend
+FROM node:18-alpine as frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
 
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev make
-
-# Set working directory
+# Build backend
+FROM golang:1.21-alpine as backend-builder
 WORKDIR /app
-
-# Copy go mod and sum files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
-
-# Copy source code
 COPY . .
-
-# Build the application with CGO enabled
-RUN make build
+RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
 
 # Final stage
 FROM alpine:latest
-
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata make
-
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /app/serverscheduler .
+# Install SQLite
+RUN apk add --no-cache sqlite
+
+# Copy frontend build
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# Copy backend binary
+COPY --from=backend-builder /app/server .
 
 # Create data directory
 RUN mkdir -p /app/data
@@ -38,4 +34,4 @@ RUN mkdir -p /app/data
 EXPOSE 8080
 
 # Run the application
-CMD ["./serverscheduler"] 
+CMD ["./server"] 

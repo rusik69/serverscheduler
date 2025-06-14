@@ -36,3 +36,4 @@ server_scheduler.db
 docker-compose.override.yml 
 
 data/*
+serverscheduler
