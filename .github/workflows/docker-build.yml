@@ -16,7 +16,6 @@ jobs:
     env:
       REGISTRY: ghcr.io
       IMAGE_NAME: ${{ github.repository }}
-      DOCKER_IMAGE: ${{ github.repository }}
 
     steps:
       - name: Checkout repository
@@ -56,5 +55,5 @@ jobs:
           fi
         env:
           DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          DOCKER_TAG: ${{ steps.meta.outputs.tags }}
+          DOCKER_TAG: main
         timeout-minutes: 5 

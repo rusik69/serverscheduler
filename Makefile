@@ -1,46 +1,50 @@
 # Makefile for ServerScheduler
 
-BINARY=bin/server
+.PHONY: build run test clean docker-build docker-run docker-push
+
+# Build variables
+BINARY_NAME=serverscheduler
 DOCKER_IMAGE ?= serverscheduler
 DOCKER_TAG ?= latest
-DOCKER_DATA_DIR=$(shell pwd)/data
 DOCKER_PLATFORMS=linux/amd64,linux/arm64
 
-.PHONY: all build test clean docker-build docker-run docker-clean docker-push
-
-all: build
-
+# Build the application
 build:
-	@mkdir -p bin
-	go build -o $(BINARY) ./cmd/server
+	go build -o $(BINARY_NAME) .
 
+# Run the application
+run:
+	go run .
+
+# Run tests
 test:
-	go test ./...
+	go test -v ./...
 
+# Clean build artifacts
 clean:
-	rm -rf bin
+	go clean
+	rm -f $(BINARY_NAME)
 
+# Build Docker image
 docker-build:
 	docker buildx build \
 		--platform $(DOCKER_PLATFORMS) \
 		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
-		--cache-from type=registry,ref=$(DOCKER_IMAGE):buildcache \
-		--cache-to type=registry,ref=$(DOCKER_IMAGE):buildcache,mode=max \
+		--cache-from type=registry,ref=$(DOCKER_IMAGE):latest \
+		--cache-to type=registry,ref=$(DOCKER_IMAGE):latest \
+		--load \
 		.
 
+# Push Docker image
 docker-push:
 	docker buildx build \
 		--platform $(DOCKER_PLATFORMS) \
 		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		--cache-from type=registry,ref=$(DOCKER_IMAGE):latest \
+		--cache-to type=registry,ref=$(DOCKER_IMAGE):latest \
 		--push \
-		--cache-from type=registry,ref=$(DOCKER_IMAGE):buildcache \
-		--cache-to type=registry,ref=$(DOCKER_IMAGE):buildcache,mode=max \
 		.
 
+# Run Docker container
 docker-run:
-	@mkdir -p $(DOCKER_DATA_DIR)
-	docker run -p 8080:8080 -v $(DOCKER_DATA_DIR):/app/data $(DOCKER_IMAGE):$(DOCKER_TAG)
-
-docker-clean:
-	docker stop $$(docker ps -q --filter ancestor=$(DOCKER_IMAGE):$(DOCKER_TAG)) 2>/dev/null || true
-	docker rm $$(docker ps -a -q --filter ancestor=$(DOCKER_IMAGE):$(DOCKER_TAG)) 2>/dev/null || true 
+	docker run -p 8080:8080 -v $(PWD)/data:/app/data $(DOCKER_IMAGE):$(DOCKER_TAG) 
