@@ -52,8 +52,8 @@ jobs:
         run: |
           # Update Makefile variables
           FULL_IMAGE_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          sed -i "s#DOCKER_IMAGE=.*#DOCKER_IMAGE=${FULL_IMAGE_NAME}#" Makefile
-          sed -i "s#DOCKER_TAG=.*#DOCKER_TAG=${{ steps.meta.outputs.tags }}#" Makefile
+          sed -i "s/DOCKER_IMAGE=.*/DOCKER_IMAGE=${FULL_IMAGE_NAME}/g" Makefile
+          sed -i "s/DOCKER_TAG=.*/DOCKER_TAG=${{ steps.meta.outputs.tags }}/g" Makefile
           
           # Build and push
           make docker-build
