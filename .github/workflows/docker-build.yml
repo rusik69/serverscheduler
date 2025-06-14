@@ -6,11 +6,6 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -18,6 +13,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+      DOCKER_IMAGE: ${{ github.repository }}
 
     steps:
       - name: Checkout repository
@@ -41,7 +40,7 @@ jobs:
         uses: docker/metadata-action@v5
         timeout-minutes: 5
         with:
-          images: ${{ env.DOCKER_IMAGE }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -52,12 +51,12 @@ jobs:
       - name: Build and push Docker image
         run: |
           # Update Makefile variables
-          sed -i "s|DOCKER_IMAGE=.*|DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}|" Makefile
+          sed -i "s|DOCKER_IMAGE=.*|DOCKER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}|" Makefile
           sed -i "s|DOCKER_TAG=.*|DOCKER_TAG=${{ steps.meta.outputs.tags }}|" Makefile
           
           # Build and push
           make docker-build
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            docker push ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tags }}
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tags }}
           fi
         timeout-minutes: 5 
