@@ -53,6 +53,6 @@ jobs:
         run: |
           make docker-build-backend
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+            make docker-push-backend
           fi
         timeout-minutes: 5 
