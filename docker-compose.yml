@@ -19,7 +19,7 @@ services:
       - serverscheduler-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 -O /dev/null http://localhost:8080/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -65,7 +65,7 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import axios from 'axios'
+import apiClient from '@/config/api'
 
 export default {
   name: 'Servers',
@@ -95,7 +95,7 @@ export default {
     const fetchServers = async () => {
       loading.value = true
       try {
-        const response = await axios.get('http://localhost:8080/api/servers')
+        const response = await apiClient.get('/api/servers')
         servers.value = response.data
       } catch (error) {
         console.error('Error fetching servers:', error)
@@ -131,7 +131,7 @@ export default {
           }
         )
         
-        await axios.delete(`http://localhost:8080/api/servers/${server.id}`)
+        await apiClient.delete(`/api/servers/${server.id}`)
         ElMessage.success('Server deleted successfully')
         fetchServers()
       } catch (error) {
@@ -150,10 +150,10 @@ export default {
         submitting.value = true
 
         if (isEditing.value) {
-          await axios.put(`http://localhost:8080/api/servers/${serverForm.id}`, serverForm)
+          await apiClient.put(`/api/servers/${serverForm.id}`, serverForm)
           ElMessage.success('Server updated successfully')
         } else {
-          await axios.post('http://localhost:8080/api/servers', serverForm)
+          await apiClient.post('/api/servers', serverForm)
           ElMessage.success('Server created successfully')
         }
 

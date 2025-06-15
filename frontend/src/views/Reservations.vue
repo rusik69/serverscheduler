@@ -59,7 +59,7 @@
         <el-form-item label="Server" prop="server_id">
           <el-select v-model="reservationForm.server_id" placeholder="Select server">
             <el-option
-              v-for="server in availableServers"
+              v-for="server in servers"
               :key="server.id"
               :label="server.name"
               :value="server.id"
@@ -100,20 +100,20 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import axios from 'axios'
+import apiClient from '@/config/api'
 
 export default {
   name: 'Reservations',
   setup() {
     const reservations = ref([])
-    const availableServers = ref([])
+    const servers = ref([])
     const loading = ref(false)
     const dialogVisible = ref(false)
     const submitting = ref(false)
     const reservationFormRef = ref(null)
 
     const reservationForm = reactive({
-      server_id: '',
+      server_id: null,
       start_time: '',
       end_time: ''
     })
@@ -133,7 +133,7 @@ export default {
     const fetchReservations = async () => {
       loading.value = true
       try {
-        const response = await axios.get('http://localhost:8080/api/reservations')
+        const response = await apiClient.get('/api/reservations')
         reservations.value = response.data
       } catch (error) {
         console.error('Error fetching reservations:', error)
@@ -143,18 +143,18 @@ export default {
       }
     }
 
-    const fetchAvailableServers = async () => {
+    const fetchServers = async () => {
       try {
-        const response = await axios.get('http://localhost:8080/api/servers')
-        availableServers.value = response.data.filter(server => server.status === 'available')
+        const response = await apiClient.get('/api/servers')
+        servers.value = response.data
       } catch (error) {
         console.error('Error fetching servers:', error)
-        ElMessage.error('Failed to fetch available servers')
+        ElMessage.error('Failed to fetch servers')
       }
     }
 
     const showAddDialog = () => {
-      reservationForm.server_id = ''
+      reservationForm.server_id = null
       reservationForm.start_time = ''
       reservationForm.end_time = ''
       dialogVisible.value = true
@@ -167,12 +167,12 @@ export default {
           'Warning',
           {
             confirmButtonText: 'Cancel Reservation',
-            cancelButtonText: 'No',
+            cancelButtonText: 'Keep Reservation',
             type: 'warning'
           }
         )
         
-        await axios.delete(`http://localhost:8080/api/reservations/${reservation.id}`)
+        await apiClient.delete(`/api/reservations/${reservation.id}`)
         ElMessage.success('Reservation cancelled successfully')
         fetchReservations()
       } catch (error) {
@@ -190,7 +190,7 @@ export default {
         await reservationFormRef.value.validate()
         submitting.value = true
 
-        await axios.post('http://localhost:8080/api/reservations', reservationForm)
+        await apiClient.post('/api/reservations', reservationForm)
         ElMessage.success('Reservation created successfully')
         dialogVisible.value = false
         fetchReservations()
@@ -231,14 +231,19 @@ export default {
       return hours
     }
 
+    const getServerName = (serverId) => {
+      const server = servers.value.find(s => s.id === serverId)
+      return server ? server.name : 'Unknown'
+    }
+
     onMounted(() => {
       fetchReservations()
-      fetchAvailableServers()
+      fetchServers()
     })
 
     return {
       reservations,
-      availableServers,
+      servers,
       loading,
       dialogVisible,
       submitting,
@@ -251,7 +256,8 @@ export default {
       formatDate,
       getStatusType,
       disabledDate,
-      disabledHours
+      disabledHours,
+      getServerName
     }
   }
 }

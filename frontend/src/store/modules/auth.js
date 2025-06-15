@@ -1,4 +1,4 @@
-import axios from 'axios'
+import apiClient from '@/config/api'
 
 const state = {
   token: localStorage.getItem('token') || '',
@@ -13,7 +13,7 @@ const getters = {
 const actions = {
   async login({ commit }, credentials) {
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/login', credentials)
+      const response = await apiClient.post('/api/auth/login', credentials)
       const { token, user } = response.data
       localStorage.setItem('token', token)
       localStorage.setItem('user', JSON.stringify(user))
@@ -27,7 +27,7 @@ const actions = {
 
   async register({ commit }, userData) {
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/register', userData)
+      const response = await apiClient.post('/api/auth/register', userData)
       const { token, user } = response.data
       localStorage.setItem('token', token)
       localStorage.setItem('user', JSON.stringify(user))

@@ -172,6 +172,22 @@ func main() {
 	// Set up router
 	r := gin.Default()
 
+	// Simple CORS middleware - must be first
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Length")
+		c.Writer.Header().Set("Access-Control-Max-Age", "43200")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(200)
+			return
+		}
+
+		c.Next()
+	})
+
 	// Serve static files from the frontend/dist directory
 	r.Static("/static", "./frontend/dist/static")
 	r.StaticFile("/", "./frontend/dist/index.html")
@@ -182,6 +198,10 @@ func main() {
 	{
 		// Health check endpoint
 		api.GET("/health", func(c *gin.Context) {
+			// Add CORS headers directly for testing
+			c.Header("Access-Control-Allow-Origin", "*")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Requested-With")
 			c.JSON(200, gin.H{"status": "ok"})
 		})
 
