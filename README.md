@@ -66,7 +66,7 @@ cd frontend && npm install && npm run serve
 
 ### Option 1: Docker Compose (Recommended)
 
-Run both frontend and backend services:
+Run both frontend and backend services together:
 
 ```bash
 # Build and start all services
@@ -86,9 +86,9 @@ Services will be available at:
 - Frontend: http://localhost
 - Backend API: http://localhost:8080
 
-### Option 2: Separate Docker Builds
+### Option 2: Individual Docker Builds
 
-Build and run services separately:
+Build and run services separately for more control:
 
 ```bash
 # Build backend image
@@ -107,17 +107,7 @@ docker run -d -p 8080:8080 -v $(PWD)/data:/app/data ghcr.io/rusik69/serverschedu
 docker run -d -p 80:80 ghcr.io/rusik69/serverscheduler-frontend:latest
 ```
 
-### Option 3: Legacy Combined Build
 
-Use the original multi-stage Dockerfile:
-
-```bash
-# Build combined image
-make docker-build
-
-# Run combined container
-make docker-run
-```
 
 ## API Endpoints
 
@@ -196,11 +186,6 @@ make docker-compose-up       # Start all services
 make docker-compose-down     # Stop all services
 make docker-compose-logs     # View service logs
 make docker-clean           # Clean up Docker resources
-
-# Legacy
-make docker-build   # Build combined Docker image
-make docker-push    # Build and push combined image
-make docker-run     # Run combined container
 ```
 
 ## Testing

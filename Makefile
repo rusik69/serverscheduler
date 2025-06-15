@@ -1,6 +1,6 @@
 # Makefile for ServerScheduler
 
-.PHONY: build run test clean frontend-build frontend-serve docker-build docker-run docker-push docker-build-backend docker-build-frontend docker-push-backend docker-push-frontend docker-push-all docker-compose-up docker-compose-down
+.PHONY: build run test clean frontend-build frontend-serve docker-build-backend docker-build-frontend docker-push-backend docker-push-frontend docker-push-all docker-compose-up docker-compose-down
 
 # Build variables
 BINARY_NAME=serverscheduler
@@ -28,20 +28,7 @@ frontend-build:
 frontend-serve:
 	cd frontend && npm run serve
 
-# Docker commands for combined image (legacy)
-docker-build:
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 
-docker-push:
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
-	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
-
-docker-run:
-	docker run -d \
-		--name $(BINARY_NAME) \
-		-p 8080:8080 \
-		-v $(PWD)/data:/app/data \
-		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 # Separate Docker builds
 docker-build-backend:
