@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Development files
+.vscode
+.idea
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+serverscheduler
+bin/
+dist/
+
+# Data directory
+data/
+
+# Node modules (will be installed in container)
+node_modules/
+
+# Go modules cache
+go.sum
+
+# Docker files (not needed in container)
+Dockerfile*
+docker-compose.yml
+.dockerignore
+
+# CI/CD
+.github/
+
+# Test files
+*_test.go
+coverage.out 

@@ -124,6 +124,11 @@ func main() {
 	// API routes
 	api := r.Group("/api")
 	{
+		// Health check endpoint
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(200, gin.H{"status": "ok"})
+		})
+
 		// Auth routes
 		auth := api.Group("/auth")
 		{

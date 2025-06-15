@@ -1,56 +1,92 @@
 # Makefile for ServerScheduler
 
-.PHONY: all build-backend build-frontend run test clean docker-build docker-run frontend-serve
+.PHONY: build run test clean frontend-build frontend-serve docker-build docker-run docker-push docker-build-backend docker-build-frontend docker-push-backend docker-push-frontend docker-push-all docker-compose-up docker-compose-down
 
 # Build variables
 BINARY_NAME=serverscheduler
-DOCKER_IMAGE ?= serverscheduler
-DOCKER_TAG ?= latest
-DOCKER_PLATFORMS=linux/amd64,linux/arm64
+DOCKER_IMAGE?=ghcr.io/rusik69/serverscheduler
+DOCKER_TAG?=latest
 
-all: build-backend build-frontend
+# Backend commands
+build:
+	go build -o $(BINARY_NAME) ./cmd/server
 
-# Build the backend
-build-backend:
-	CGO_ENABLED=1 go build -o $(BINARY_NAME) ./cmd/server
+run:
+	go run ./cmd/server
 
-# Build the frontend
-build-frontend:
-	cd frontend && npm install && npm run build
-
-# Run the application
-run: build-backend
-	./$(BINARY_NAME)
-
-# Run tests
 test:
 	go test -v ./...
 
-# Clean build artifacts
 clean:
 	go clean
 	rm -f $(BINARY_NAME)
-	rm -rf bin/
-	rm -rf frontend/dist/
 
-# Build Docker image
+# Frontend commands
+frontend-build:
+	cd frontend && npm install && npm run build
+
+frontend-serve:
+	cd frontend && npm run serve
+
+# Docker commands for combined image (legacy)
 docker-build:
 	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 
-# Push Docker image
 docker-push:
-	docker buildx build \
-		--platform $(DOCKER_PLATFORMS) \
-		--tag $(DOCKER_IMAGE):$(DOCKER_TAG) \
-		--cache-from type=registry,ref=$(DOCKER_IMAGE):latest \
-		--cache-to type=registry,ref=$(DOCKER_IMAGE):latest \
-		--push \
-		.
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
 
-# Run Docker container
 docker-run:
-	docker run -p 8080:8080 -v $(PWD)/data:/app/data $(DOCKER_IMAGE):$(DOCKER_TAG)
+	docker run -d \
+		--name $(BINARY_NAME) \
+		-p 8080:8080 \
+		-v $(PWD)/data:/app/data \
+		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
-# Serve frontend in development mode
-frontend-serve:
-	cd frontend && npm install && npm run serve 
+# Separate Docker builds
+docker-build-backend:
+	docker build -f Dockerfile.backend -t $(DOCKER_IMAGE)-backend:$(DOCKER_TAG) .
+
+docker-build-frontend:
+	docker build -f frontend/Dockerfile -t $(DOCKER_IMAGE)-frontend:$(DOCKER_TAG) ./frontend
+
+docker-build-all: docker-build-backend docker-build-frontend
+
+# Push separate images
+docker-push-backend:
+	docker build -f Dockerfile.backend -t $(DOCKER_IMAGE)-backend:$(DOCKER_TAG) .
+	docker push $(DOCKER_IMAGE)-backend:$(DOCKER_TAG)
+
+docker-push-frontend:
+	docker build -f frontend/Dockerfile -t $(DOCKER_IMAGE)-frontend:$(DOCKER_TAG) ./frontend
+	docker push $(DOCKER_IMAGE)-frontend:$(DOCKER_TAG)
+
+docker-push-all: docker-push-backend docker-push-frontend
+
+# Docker Compose commands
+docker-compose-up:
+	docker-compose up -d
+
+docker-compose-down:
+	docker-compose down
+
+docker-compose-build:
+	docker-compose build
+
+docker-compose-logs:
+	docker-compose logs -f
+
+docker-compose-restart:
+	docker-compose restart
+
+# Development commands
+dev-backend:
+	go run ./cmd/server
+
+dev-frontend:
+	cd frontend && npm run serve
+
+# Clean up Docker resources
+docker-clean:
+	docker-compose down -v
+	docker system prune -f 
