@@ -51,7 +51,7 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main .
+          make docker-build-backend
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
           fi
