@@ -5,14 +5,11 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev sqlite-dev
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Copy source code
+COPY . .
 
 # Download dependencies
 RUN go mod download
-
-# Copy source code
-COPY . .
 
 # Build the application with CGO enabled for SQLite
 RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
