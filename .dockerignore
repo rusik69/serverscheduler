@@ -28,9 +28,6 @@ data/
 # Node modules (will be installed in container)
 node_modules/
 
-# Go modules cache
-go.sum
-
 # Docker files (not needed in container)
 Dockerfile*
 docker-compose.yml
