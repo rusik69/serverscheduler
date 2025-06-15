@@ -3,16 +3,13 @@ FROM golang:1.21-alpine as builder
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+RUN apk add --no-cache gcc musl-dev sqlite-dev make
 
 # Copy source code
 COPY . .
 
 # Download dependencies
-RUN go mod download
-
-# Build the application with CGO enabled for SQLite
-RUN CGO_ENABLED=1 GOOS=linux go build -o server ./cmd/server
+RUN make build
 
 # Production stage
 FROM alpine:latest
