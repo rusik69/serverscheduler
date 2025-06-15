@@ -134,12 +134,34 @@ docker run -d -p 80:80 ghcr.io/rusik69/serverscheduler-frontend:latest
 
 - `PORT` - Server port (default: 8080)
 - `DB_PATH` - SQLite database path (default: data/serverscheduler.db)
+- `ROOT_PASSWORD` - Set a specific root password (optional)
+- `RESET_ROOT_PASSWORD` - Set to `true` to reset root password on startup (optional)
 
-### Default Credentials
+### Root User Management
 
 On first startup, a root user is automatically created:
 - Username: `root`
 - Password: (randomly generated and displayed in logs)
+
+#### Managing Root Password
+
+**If root user already exists:**
+- The application will show if `ROOT_PASSWORD` is set in environment variables
+- To reset the password, set `RESET_ROOT_PASSWORD=true` and restart
+- To use a specific password, set `ROOT_PASSWORD=your_password` and reset
+
+**Examples:**
+```bash
+# Set specific root password
+export ROOT_PASSWORD="mySecurePassword123"
+
+# Reset root password with random generation
+export RESET_ROOT_PASSWORD=true
+
+# Reset root password with specific password
+export ROOT_PASSWORD="newPassword456"
+export RESET_ROOT_PASSWORD=true
+```
 
 ## Architecture
 

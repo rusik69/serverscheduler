@@ -62,6 +62,40 @@ func getRandomInt(max int) int {
 	return int(n.Int64())
 }
 
+// resetRootPassword resets the root user password
+func resetRootPassword() error {
+	// Use environment password or generate random password
+	var password string
+	if envPassword := os.Getenv("ROOT_PASSWORD"); envPassword != "" {
+		password = envPassword
+		log.Printf("Using ROOT_PASSWORD from environment variable for reset")
+	} else {
+		var err error
+		password, err = generateRandomPassword(passwordLength)
+		if err != nil {
+			return fmt.Errorf("failed to generate random password: %v", err)
+		}
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %v", err)
+	}
+
+	// Update root user password
+	_, err = database.GetDB().Exec(
+		"UPDATE users SET password = ? WHERE username = ?",
+		string(hashedPassword), defaultRootUsername,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update root password: %v", err)
+	}
+
+	log.Printf("Root password reset successfully!\nUsername: %s\nPassword: %s\n", defaultRootUsername, password)
+	return nil
+}
+
 func createRootUser() error {
 	// Check if root user exists
 	var exists bool
@@ -71,14 +105,36 @@ func createRootUser() error {
 	}
 
 	if exists {
-		log.Println("Root user already exists")
+		log.Printf("Root user already exists (username: %s)", defaultRootUsername)
+
+		// Check if password reset is requested
+		if os.Getenv("RESET_ROOT_PASSWORD") == "true" {
+			log.Printf("RESET_ROOT_PASSWORD=true detected, resetting root password...")
+			return resetRootPassword()
+		}
+
+		// Check if password is stored in environment variable
+		if envPassword := os.Getenv("ROOT_PASSWORD"); envPassword != "" {
+			log.Printf("Root password is available in ROOT_PASSWORD environment variable: %s", envPassword)
+		} else {
+			log.Printf("Root password is not available (stored as hash in database)")
+			log.Printf("To reset root password, set RESET_ROOT_PASSWORD=true environment variable")
+			log.Printf("To use a specific password, set ROOT_PASSWORD environment variable")
+		}
 		return nil
 	}
 
-	// Generate random password
-	password, err := generateRandomPassword(passwordLength)
-	if err != nil {
-		return fmt.Errorf("failed to generate random password: %v", err)
+	// Use environment password or generate random password
+	var password string
+	if envPassword := os.Getenv("ROOT_PASSWORD"); envPassword != "" {
+		password = envPassword
+		log.Printf("Using ROOT_PASSWORD from environment variable")
+	} else {
+		var err error
+		password, err = generateRandomPassword(passwordLength)
+		if err != nil {
+			return fmt.Errorf("failed to generate random password: %v", err)
+		}
 	}
 
 	// Hash password

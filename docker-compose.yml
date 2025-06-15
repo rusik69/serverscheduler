@@ -11,6 +11,10 @@ services:
     environment:
       - PORT=8080
       - DB_PATH=/app/data/serverscheduler.db
+      # Uncomment to set a specific root password
+      # - ROOT_PASSWORD=your_secure_password_here
+      # Uncomment to reset root password on startup
+      # - RESET_ROOT_PASSWORD=true
     networks:
       - serverscheduler-network
     restart: unless-stopped
