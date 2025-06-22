@@ -30,6 +30,12 @@ const routes = [
     name: 'Reservations',
     component: () => import('../views/Reservations.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/users',
+    name: 'Users',
+    component: () => import('../views/Users.vue'),
+    meta: { requiresAuth: true, requiresRoot: true }
   }
 ]
 
@@ -40,10 +46,17 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const isAuthenticated = store.getters['auth/isAuthenticated']
+  const user = store.getters['auth/user']
 
   if (to.matched.some(record => record.meta.requiresAuth)) {
     if (!isAuthenticated) {
       next('/login')
+    } else if (to.matched.some(record => record.meta.requiresRoot)) {
+      if (user?.role !== 'root') {
+        next('/')
+      } else {
+        next()
+      }
     } else {
       next()
     }

@@ -3,9 +3,10 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/big"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rusik69/serverscheduler/internal/database"
@@ -18,6 +19,26 @@ const (
 	defaultRootUsername = "root"
 	passwordLength      = 16
 )
+
+// setupLogger configures structured logging
+func setupLogger() *slog.Logger {
+	// Create a text handler with timestamp
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Format timestamp
+			if a.Key == slog.TimeKey {
+				a.Value = slog.StringValue(time.Now().Format("2006-01-02 15:04:05"))
+			}
+			return a
+		},
+	}
+
+	handler := slog.NewTextHandler(os.Stdout, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+	return logger
+}
 
 // generateRandomPassword creates a secure random password
 func generateRandomPassword(length int) (string, error) {
@@ -68,7 +89,7 @@ func resetRootPassword() error {
 	var password string
 	if envPassword := os.Getenv("ROOT_PASSWORD"); envPassword != "" {
 		password = envPassword
-		log.Printf("Using ROOT_PASSWORD from environment variable for reset")
+		slog.Info("Using ROOT_PASSWORD from environment variable for reset")
 	} else {
 		var err error
 		password, err = generateRandomPassword(passwordLength)
@@ -92,7 +113,7 @@ func resetRootPassword() error {
 		return fmt.Errorf("failed to update root password: %v", err)
 	}
 
-	log.Printf("Root password reset successfully!\nUsername: %s\nPassword: %s\n", defaultRootUsername, password)
+	slog.Info("Root password reset successfully", "username", defaultRootUsername, "password", password)
 	return nil
 }
 
@@ -105,21 +126,21 @@ func createRootUser() error {
 	}
 
 	if exists {
-		log.Printf("Root user already exists (username: %s)", defaultRootUsername)
+		slog.Info("Root user already exists", "username", defaultRootUsername)
 
 		// Check if password reset is requested
 		if os.Getenv("RESET_ROOT_PASSWORD") == "true" {
-			log.Printf("RESET_ROOT_PASSWORD=true detected, resetting root password...")
+			slog.Info("RESET_ROOT_PASSWORD=true detected, resetting root password")
 			return resetRootPassword()
 		}
 
 		// Check if password is stored in environment variable
 		if envPassword := os.Getenv("ROOT_PASSWORD"); envPassword != "" {
-			log.Printf("Root password is available in ROOT_PASSWORD environment variable: %s", envPassword)
+			slog.Info("Root password is available in environment variable", "password", envPassword)
 		} else {
-			log.Printf("Root password is not available (stored as hash in database)")
-			log.Printf("To reset root password, set RESET_ROOT_PASSWORD=true environment variable")
-			log.Printf("To use a specific password, set ROOT_PASSWORD environment variable")
+			slog.Info("Root password is not available (stored as hash in database)")
+			slog.Info("To reset root password, set RESET_ROOT_PASSWORD=true environment variable")
+			slog.Info("To use a specific password, set ROOT_PASSWORD environment variable")
 		}
 		return nil
 	}
@@ -128,7 +149,7 @@ func createRootUser() error {
 	var password string
 	if envPassword := os.Getenv("ROOT_PASSWORD"); envPassword != "" {
 		password = envPassword
-		log.Printf("Using ROOT_PASSWORD from environment variable")
+		slog.Info("Using ROOT_PASSWORD from environment variable")
 	} else {
 		var err error
 		password, err = generateRandomPassword(passwordLength)
@@ -152,25 +173,53 @@ func createRootUser() error {
 		return fmt.Errorf("failed to create root user: %v", err)
 	}
 
-	log.Printf("Root user created successfully!\nUsername: %s\nPassword: %s\n", defaultRootUsername, password)
+	slog.Info("Root user created successfully", "username", defaultRootUsername, "password", password)
 	return nil
 }
 
 func main() {
+	// Set up structured logging
+	logger := setupLogger()
+	logger.Info("Starting ServerScheduler")
+
 	// Initialize database
 	err := database.Init()
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
 	}
+	logger.Info("Database initialized successfully")
+
+	// Run database migrations
+	err = database.RunMigrations()
+	if err != nil {
+		logger.Error("Failed to run database migrations", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("Database migrations completed successfully")
 
 	// Create root user if it doesn't exist
 	err = createRootUser()
 	if err != nil {
-		log.Printf("Warning: failed to check root user: %v", err)
+		logger.Warn("Failed to check root user", "error", err)
 	}
 
 	// Set up router
 	r := gin.Default()
+
+	// Add custom logging middleware
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		Formatter: func(params gin.LogFormatterParams) string {
+			return fmt.Sprintf("[%s] %s %s %d %s %s\n",
+				params.TimeStamp.Format("2006-01-02 15:04:05"),
+				params.Method,
+				params.Path,
+				params.StatusCode,
+				params.Latency,
+				params.ClientIP,
+			)
+		},
+	}))
 
 	// Simple CORS middleware - must be first
 	r.Use(func(c *gin.Context) {
@@ -233,7 +282,19 @@ func main() {
 				reservations.GET("", handlers.GetReservations)
 				reservations.GET("/:id", handlers.GetReservation)
 				reservations.POST("", handlers.CreateReservation)
+				reservations.PUT("/:id", handlers.UpdateReservation)
 				reservations.DELETE("/:id", handlers.CancelReservation)
+			}
+
+			// User management routes (root only)
+			users := protected.Group("/users")
+			users.Use(middleware.RootMiddleware())
+			{
+				users.GET("", handlers.GetUsers)
+				users.GET("/:id", handlers.GetUser)
+				users.POST("", handlers.CreateUser)
+				users.PUT("/:id", handlers.UpdateUser)
+				users.DELETE("/:id", handlers.DeleteUser)
 			}
 		}
 	}
@@ -248,8 +309,9 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("Server starting on http://localhost:%s", port)
+	logger.Info("Server starting", "port", port, "url", fmt.Sprintf("http://localhost:%s", port))
 	if err := r.Run(":" + port); err != nil {
-		log.Fatal(err)
+		logger.Error("Server failed to start", "error", err)
+		os.Exit(1)
 	}
 }

@@ -25,11 +25,6 @@ clean:
 frontend-build:
 	cd frontend && npm install && npm run build
 
-frontend-serve:
-	cd frontend && npm run serve
-
-
-
 # Separate Docker builds
 docker-build-backend:
 	docker build -f Dockerfile.backend -t $(DOCKER_IMAGE)-backend:$(DOCKER_TAG) .
@@ -68,10 +63,13 @@ docker-compose-restart:
 
 # Development commands
 dev-backend:
-	go run ./cmd/server
+	ROOT_PASSWORD=password go run ./cmd/server
 
-dev-frontend:
+dev-frontend-run:
 	cd frontend && npm run serve
+
+dev-frontend-build:
+	cd frontend && npm install && npm run build
 
 # Clean up Docker resources
 docker-clean:

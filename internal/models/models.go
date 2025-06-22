@@ -18,6 +18,9 @@ type Server struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Status      string    `json:"status"` // available, reserved, maintenance
+	IPAddress   string    `json:"ip_address"`
+	Username    string    `json:"username"`
+	Password    string    `json:"password"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -28,6 +31,7 @@ type Reservation struct {
 	ServerID   int64     `json:"server_id"`
 	ServerName string    `json:"server_name"`
 	UserID     int64     `json:"user_id"`
+	Username   string    `json:"username"`
 	StartTime  time.Time `json:"start_time"`
 	EndTime    time.Time `json:"end_time"`
 	Status     string    `json:"status"` // active, cancelled, completed

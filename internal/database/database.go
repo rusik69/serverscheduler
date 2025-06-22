@@ -37,7 +37,10 @@ func Init() error {
 		CREATE TABLE IF NOT EXISTS servers (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT UNIQUE NOT NULL,
-			status TEXT NOT NULL DEFAULT 'available'
+			status TEXT NOT NULL DEFAULT 'available',
+			ip_address TEXT,
+			username TEXT,
+			password TEXT
 		)
 	`)
 	if err != nil {
@@ -175,7 +178,10 @@ func InitTestDB() error {
 		CREATE TABLE IF NOT EXISTS servers (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT UNIQUE NOT NULL,
-			status TEXT NOT NULL DEFAULT 'available'
+			status TEXT NOT NULL DEFAULT 'available',
+			ip_address TEXT,
+			username TEXT,
+			password TEXT
 		)
 	`)
 	if err != nil {
@@ -231,4 +237,32 @@ func CleanupTestDB() error {
 // Cleanup removes the database file
 func Cleanup() {
 	os.Remove("./serverscheduler.db")
+}
+
+// isColumnExistsError checks if the error is about a column already existing
+func isColumnExistsError(err error) bool {
+	return err != nil && (err.Error() == "duplicate column name: ip_address" ||
+		err.Error() == "duplicate column name: username" ||
+		err.Error() == "duplicate column name: password")
+}
+
+// RunMigrations runs database migrations for existing tables
+func RunMigrations() error {
+	// Add new columns to existing servers table if they don't exist
+	_, err := db.Exec(`ALTER TABLE servers ADD COLUMN ip_address TEXT`)
+	if err != nil && !isColumnExistsError(err) {
+		return err
+	}
+
+	_, err = db.Exec(`ALTER TABLE servers ADD COLUMN username TEXT`)
+	if err != nil && !isColumnExistsError(err) {
+		return err
+	}
+
+	_, err = db.Exec(`ALTER TABLE servers ADD COLUMN password TEXT`)
+	if err != nil && !isColumnExistsError(err) {
+		return err
+	}
+
+	return nil
 }

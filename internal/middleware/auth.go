@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -40,6 +41,7 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			slog.Warn("Authentication failed - missing authorization header", "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
 			c.Abort()
 			return
@@ -47,6 +49,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
+			slog.Warn("Authentication failed - invalid header format", "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
 			c.Abort()
 			return
@@ -60,11 +63,13 @@ func AuthMiddleware() gin.HandlerFunc {
 		})
 
 		if err != nil || !token.Valid {
+			slog.Warn("Authentication failed - invalid token", "path", c.Request.URL.Path, "client_ip", c.ClientIP(), "error", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
 
+		slog.Info("Authentication successful", "user_id", claims.UserID, "username", claims.Username, "role", claims.Role, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
@@ -76,11 +81,30 @@ func AuthMiddleware() gin.HandlerFunc {
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := c.Get("role")
+		username, _ := c.Get("username")
 		if !exists || role != "admin" {
+			slog.Warn("Admin access denied", "username", username, "role", role, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			c.Abort()
 			return
 		}
+		slog.Info("Admin access granted", "username", username, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
+		c.Next()
+	}
+}
+
+// RootMiddleware is a middleware to check if the user is root
+func RootMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("role")
+		username, _ := c.Get("username")
+		if !exists || role != "root" {
+			slog.Warn("Root access denied", "username", username, "role", role, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
+			c.JSON(http.StatusForbidden, gin.H{"error": "Root access required"})
+			c.Abort()
+			return
+		}
+		slog.Info("Root access granted", "username", username, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
 		c.Next()
 	}
 }
