@@ -16,9 +16,10 @@
             </div>
           </template>
           
-          <el-table :data="reservations" v-loading="loading" class="modern-table">
-            <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="server_name" label="Server" min-width="150">
+          <div class="table-container">
+            <el-table :data="reservations" v-loading="loading" class="modern-table">
+            <el-table-column prop="id" label="ID" width="60" />
+            <el-table-column prop="server_name" label="Server" width="140">
               <template #default="{ row }">
                 <div class="server-info">
                   <el-icon class="server-icon"><Monitor /></el-icon>
@@ -26,7 +27,7 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="username" label="User" min-width="120">
+            <el-table-column prop="username" label="User" width="120">
               <template #default="{ row }">
                 <div class="user-info">
                   <el-icon class="user-icon"><User /></el-icon>
@@ -34,7 +35,37 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="start_time" label="Start Time" min-width="180">
+            <!-- Server Credentials - Visible to all authenticated users -->
+            <el-table-column label="Access" width="180">
+              <template #default="{ row }">
+                <div v-if="row.server_username || row.server_password || row.server_ip" class="credentials-compact">
+                  <div class="cred-row">
+                    <el-icon class="cred-icon"><Monitor /></el-icon>
+                    <span class="cred-text">{{ row.server_ip || 'N/A' }}</span>
+                  </div>
+                  <div class="cred-row">
+                    <el-icon class="cred-icon"><User /></el-icon>
+                    <span class="cred-text">{{ row.server_username || 'N/A' }}</span>
+                  </div>
+                  <div v-if="row.server_password" class="cred-row">
+                    <el-icon class="cred-icon"><Lock /></el-icon>
+                    <el-button 
+                      size="small" 
+                      text 
+                      @click="copyToClipboard(row.server_password)"
+                      class="password-btn"
+                    >
+                      <el-icon><CopyDocument /></el-icon>
+                      Copy
+                    </el-button>
+                  </div>
+                </div>
+                <div v-else class="no-credentials-compact">
+                  <el-text type="info" size="small">No access</el-text>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="start_time" label="Start Time" width="160">
               <template #default="{ row }">
                 <div class="time-info">
                   <el-icon class="time-icon"><Clock /></el-icon>
@@ -42,7 +73,7 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="end_time" label="End Time" min-width="180">
+            <el-table-column prop="end_time" label="End Time" width="160">
               <template #default="{ row }">
                 <div class="time-info">
                   <el-icon class="time-icon"><Clock /></el-icon>
@@ -50,7 +81,7 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="Status" width="120">
+            <el-table-column prop="status" label="Status" width="100">
               <template #default="{ row }">
                 <el-tag 
                   :type="getStatusType(row.status)"
@@ -60,13 +91,14 @@
                   <el-icon>
                     <CircleCheck v-if="row.status === 'active'" />
                     <WarningFilled v-else-if="row.status === 'pending'" />
+                    <Remove v-else-if="row.status === 'cancelled'" />
                     <CircleClose v-else />
                   </el-icon>
                   {{ row.status }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="Actions" width="200" fixed="right">
+            <el-table-column label="Actions" :width="isRoot ? 240 : 200" fixed="right">
               <template #default="{ row }">
                 <div class="action-buttons">
                   <el-button 
@@ -74,25 +106,33 @@
                     type="primary" 
                     @click="editReservation(row)"
                     :disabled="row.status === 'cancelled'"
-                    class="edit-btn"
+                    class="action-btn compact-btn"
                   >
                     <el-icon><Edit /></el-icon>
-                    Edit
                   </el-button>
                   <el-button 
                     size="small" 
-                    type="danger" 
+                    type="warning" 
                     @click="cancelReservation(row)"
                     :disabled="row.status === 'cancelled'"
-                    class="cancel-btn"
+                    class="action-btn compact-btn"
                   >
                     <el-icon><CircleClose /></el-icon>
-                    Cancel
+                  </el-button>
+                  <el-button 
+                    v-if="isRoot"
+                    size="small" 
+                    type="danger" 
+                    @click="deleteReservation(row)"
+                    class="action-btn compact-btn"
+                  >
+                    <el-icon><Delete /></el-icon>
                   </el-button>
                 </div>
               </template>
             </el-table-column>
           </el-table>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -148,6 +188,7 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useStore } from 'vuex'
 import { 
   Calendar, 
   Plus, 
@@ -157,7 +198,11 @@ import {
   CircleCheck, 
   WarningFilled, 
   CircleClose,
-  Edit 
+  Edit,
+  Lock,
+  CopyDocument,
+  Delete,
+  Remove
 } from '@element-plus/icons-vue'
 import apiClient from '@/config/api'
 
@@ -172,7 +217,11 @@ export default {
     CircleCheck,
     WarningFilled,
     CircleClose,
-    Edit
+    Edit,
+    Lock,
+    CopyDocument,
+    Delete,
+    Remove
   },
   setup() {
     const reservations = ref([])
@@ -182,6 +231,8 @@ export default {
     const isEditing = ref(false)
     const submitting = ref(false)
     const reservationFormRef = ref(null)
+  
+    const store = useStore()
 
     const reservationForm = reactive({
       id: null,
@@ -293,6 +344,41 @@ export default {
       }
     }
 
+    const deleteReservation = async (reservation) => {
+      try {
+        await ElMessageBox.confirm(
+          `Are you sure you want to permanently delete this reservation?
+          
+Server: ${reservation.server_name || 'Unknown'}
+User: ${reservation.username || 'Unknown'}
+Time: ${formatDate(reservation.start_time)} - ${formatDate(reservation.end_time)}
+
+This action cannot be undone.`,
+          'Delete Reservation',
+          {
+            confirmButtonText: 'Delete Permanently',
+            cancelButtonText: 'Cancel',
+            type: 'error',
+            dangerouslyUseHTMLString: false
+          }
+        )
+        
+        // Use the new permanent delete endpoint for root users
+        await apiClient.delete(`/api/reservations/${reservation.id}/delete`)
+        ElMessage.success('Reservation deleted permanently')
+        fetchReservations()
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('Error deleting reservation:', error)
+          if (error.response?.data?.error) {
+            ElMessage.error(error.response.data.error)
+          } else {
+            ElMessage.error('Failed to delete reservation')
+          }
+        }
+      }
+    }
+
     const handleReservationSubmit = async () => {
       if (!reservationFormRef.value) return
 
@@ -327,7 +413,9 @@ export default {
         case 'active':
           return 'success'
         case 'cancelled':
-          return 'danger'
+          return ''
+        case 'pending':
+          return 'warning'
         default:
           return 'info'
       }
@@ -352,6 +440,20 @@ export default {
       return server ? server.name : 'Unknown'
     }
 
+    const copyToClipboard = (text) => {
+      const input = document.createElement('input')
+      input.value = text
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+      ElMessage.success('Password copied to clipboard')
+    }
+
+    
+
+    const isRoot = computed(() => store.getters['auth/user']?.role === 'root')
+
     onMounted(() => {
       fetchReservations()
       fetchServers()
@@ -371,12 +473,15 @@ export default {
       showAddDialog,
       editReservation,
       cancelReservation,
+      deleteReservation,
       handleReservationSubmit,
       formatDate,
       getStatusType,
       disabledDate,
       disabledHours,
-      getServerName
+      getServerName,
+      copyToClipboard,
+      isRoot
     }
   }
 }
@@ -386,6 +491,26 @@ export default {
 .reservations-container {
   max-width: 1400px;
   margin: 0 auto;
+  padding: 20px;
+}
+
+:deep(.el-card) {
+  background: rgba(44, 62, 80, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: none !important;
+  border-radius: 15px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+:deep(.el-card__header) {
+  background: rgba(52, 73, 94, 0.95) !important;
+  border-bottom: 2px solid #4a6583 !important;
+  border-radius: 15px 15px 0 0 !important;
+}
+
+:deep(.el-card__body) {
+  background: transparent !important;
+  padding: 0 !important;
 }
 
 .card-header {
@@ -405,7 +530,7 @@ export default {
 }
 
 .header-icon {
-  color: #10b981;
+  color: #74b9ff;
   font-size: 1.5rem;
 }
 
@@ -418,10 +543,86 @@ export default {
   align-items: center;
 }
 
-/* Table Styling */
+/* Table Container */
+.table-container {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+/* Table Styling - High Contrast Dark Theme */
 .modern-table {
   border-radius: 12px !important;
   overflow: hidden;
+  background: #2c3e50 !important;
+  min-width: 800px;
+}
+
+:deep(.el-table) {
+  background: #2c3e50 !important;
+  color: #ffffff !important;
+}
+
+:deep(.el-table__header-wrapper) {
+  background: #34495e !important;
+}
+
+:deep(.el-table__header) {
+  background: #34495e !important;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: #34495e !important;
+  color: #ffffff !important;
+  border-bottom: 2px solid #4a6583 !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+:deep(.el-table td.el-table__cell) {
+  background: #2c3e50 !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid #4a6583 !important;
+  font-weight: 500;
+}
+
+:deep(.el-table__row) {
+  background: #2c3e50 !important;
+}
+
+:deep(.el-table__row:hover > td.el-table__cell) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table__body tr.hover-row > td.el-table__cell) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table__empty-block) {
+  background: #2c3e50 !important;
+  color: #bdc3c7 !important;
+}
+
+:deep(.el-table__empty-text) {
+  color: #bdc3c7 !important;
+}
+
+/* Ensure all table text has proper contrast */
+:deep(.el-table .cell) {
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+/* ID column styling */
+:deep(.el-table td.el-table__cell:first-child .cell) {
+  color: #74b9ff !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
 }
 
 .server-info,
@@ -430,57 +631,92 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #e2e8f0;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .server-icon {
-  color: #60a5fa;
+  color: #74b9ff;
   font-size: 1.1rem;
 }
 
 .user-icon {
-  color: #f59e0b;
+  color: #ffd93d;
   font-size: 1rem;
 }
 
 .time-icon {
-  color: #8b5cf6;
+  color: #a78bfa;
   font-size: 1rem;
 }
 
 .status-tag {
   border-radius: 8px !important;
-  font-weight: 500;
-  padding: 4px 12px !important;
+  font-weight: 700;
+  padding: 6px 12px !important;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  color: #ffffff !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Custom styling for cancelled status */
+.status-tag:not(.el-tag--success):not(.el-tag--warning):not(.el-tag--info):not(.el-tag--danger) {
+  background: #6c757d !important;
+  border: 1px solid #6c757d !important;
+  color: #ffffff !important;
+}
+
+.status-tag:not(.el-tag--success):not(.el-tag--warning):not(.el-tag--info):not(.el-tag--danger):hover {
+  background: #5a6268 !important;
+  border: 1px solid #5a6268 !important;
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  justify-content: center;
+}
+
+.compact-btn {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .edit-btn,
-.cancel-btn {
+.cancel-btn,
+.delete-btn {
   border-radius: 8px !important;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .edit-btn:hover,
-.cancel-btn:hover {
-  transform: translateY(-1px);
+.cancel-btn:hover,
+.delete-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .edit-btn:disabled,
-.cancel-btn:disabled {
-  opacity: 0.5;
+.cancel-btn:disabled,
+.delete-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* Dialog Styling */
@@ -534,10 +770,9 @@ export default {
     flex-direction: column;
   }
   
-  .edit-btn,
-  .cancel-btn {
-    width: 100%;
-    justify-content: center;
+  .compact-btn {
+    width: 28px !important;
+    height: 28px !important;
   }
 }
 
@@ -551,5 +786,57 @@ export default {
   .time-info span {
     font-size: 0.875rem;
   }
+}
+
+/* Server Credentials Styling - Compact */
+.credentials-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.cred-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.cred-icon {
+  color: #74b9ff;
+  font-size: 12px;
+  min-width: 12px;
+}
+
+.cred-text {
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+.password-btn {
+  padding: 2px 6px !important;
+  font-size: 10px !important;
+  height: auto !important;
+  min-height: auto !important;
+  border-radius: 4px !important;
+}
+
+.password-btn .el-icon {
+  font-size: 10px;
+  margin-right: 2px;
+}
+
+.no-credentials-compact {
+  text-align: center;
+  padding: 8px 4px;
+  color: #94a3b8;
+  font-style: italic;
 }
 </style> 

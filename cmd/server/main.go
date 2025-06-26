@@ -262,6 +262,13 @@ func main() {
 			auth.GET("/user", handlers.GetUserInfo)
 		}
 
+		// Protected auth routes
+		authProtected := api.Group("/auth")
+		authProtected.Use(middleware.AuthMiddleware())
+		{
+			authProtected.POST("/change-password", handlers.ChangePassword)
+		}
+
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.AuthMiddleware())
@@ -284,6 +291,13 @@ func main() {
 				reservations.POST("", handlers.CreateReservation)
 				reservations.PUT("/:id", handlers.UpdateReservation)
 				reservations.DELETE("/:id", handlers.CancelReservation)
+			}
+
+			// Root-only reservation management routes
+			reservationAdmin := protected.Group("/reservations")
+			reservationAdmin.Use(middleware.RootMiddleware())
+			{
+				reservationAdmin.DELETE("/:id/delete", handlers.DeleteReservation)
 			}
 
 			// User management routes (root only)

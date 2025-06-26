@@ -65,6 +65,10 @@ func CreateServer(c *gin.Context) {
 func GetServers(c *gin.Context) {
 	slog.Info("Servers list requested", "client_ip", c.ClientIP())
 
+	// Get user role from context
+	role, exists := c.Get("role")
+	isRoot := exists && role == "root"
+
 	rows, err := database.GetDB().Query("SELECT id, name, status, COALESCE(ip_address, '') as ip_address, COALESCE(username, '') as username, COALESCE(password, '') as password FROM servers")
 	if err != nil {
 		slog.Error("Failed to fetch servers from database", "error", err)
@@ -81,10 +85,16 @@ func GetServers(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan server"})
 			return
 		}
+
+		// Hide password from non-root users
+		if !isRoot {
+			server.Password = ""
+		}
+
 		servers = append(servers, server)
 	}
 
-	slog.Info("Servers list returned", "count", len(servers), "client_ip", c.ClientIP())
+	slog.Info("Servers list returned", "count", len(servers), "client_ip", c.ClientIP(), "show_passwords", isRoot)
 	c.JSON(http.StatusOK, gin.H{"servers": servers})
 }
 
@@ -96,6 +106,10 @@ func GetServer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
 		return
 	}
+
+	// Get user role from context
+	role, exists := c.Get("role")
+	isRoot := exists && role == "root"
 
 	var server models.Server
 	err = database.GetDB().QueryRow(
@@ -112,6 +126,12 @@ func GetServer(c *gin.Context) {
 		return
 	}
 
+	// Hide password from non-root users
+	if !isRoot {
+		server.Password = ""
+	}
+
+	slog.Info("Server details returned", "server_id", id, "client_ip", c.ClientIP(), "show_password", isRoot)
 	c.JSON(http.StatusOK, server)
 }
 

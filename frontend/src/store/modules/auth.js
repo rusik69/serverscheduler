@@ -2,7 +2,14 @@ import apiClient from '@/config/api'
 
 const state = {
   token: localStorage.getItem('token') || '',
-  user: JSON.parse(localStorage.getItem('user')) || null
+  user: (() => {
+    try {
+      const userStr = localStorage.getItem('user')
+      return userStr ? JSON.parse(userStr) : null
+    } catch (e) {
+      return null
+    }
+  })()
 }
 
 const getters = {

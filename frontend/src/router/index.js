@@ -1,40 +1,54 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import Home from '../views/Home.vue'
+import Login from '../views/Login.vue'
+import Register from '../views/Register.vue'
+import Servers from '../views/Servers.vue'
+import Reservations from '../views/Reservations.vue'
+import Users from '../views/Users.vue'
+import Calendar from '../views/Calendar.vue'
 import store from '../store'
 
 const routes = [
   {
     path: '/',
     name: 'Home',
-    component: () => import('../views/Home.vue')
+    component: Home,
+    meta: { requiresAuth: true }
   },
   {
     path: '/login',
     name: 'Login',
-    component: () => import('../views/Login.vue'),
+    component: Login,
     meta: { guest: true }
   },
   {
     path: '/register',
     name: 'Register',
-    component: () => import('../views/Register.vue'),
+    component: Register,
     meta: { guest: true }
   },
   {
     path: '/servers',
     name: 'Servers',
-    component: () => import('../views/Servers.vue'),
+    component: Servers,
     meta: { requiresAuth: true }
   },
   {
     path: '/reservations',
     name: 'Reservations',
-    component: () => import('../views/Reservations.vue'),
+    component: Reservations,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/calendar',
+    name: 'Calendar',
+    component: Calendar,
     meta: { requiresAuth: true }
   },
   {
     path: '/users',
     name: 'Users',
-    component: () => import('../views/Users.vue'),
+    component: Users,
     meta: { requiresAuth: true, requiresRoot: true }
   }
 ]

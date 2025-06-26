@@ -27,16 +27,19 @@ type Server struct {
 
 // Reservation represents a server reservation
 type Reservation struct {
-	ID         int64     `json:"id"`
-	ServerID   int64     `json:"server_id"`
-	ServerName string    `json:"server_name"`
-	UserID     int64     `json:"user_id"`
-	Username   string    `json:"username"`
-	StartTime  time.Time `json:"start_time"`
-	EndTime    time.Time `json:"end_time"`
-	Status     string    `json:"status"` // active, cancelled, completed
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID             int64     `json:"id"`
+	ServerID       int64     `json:"server_id"`
+	ServerName     string    `json:"server_name"`
+	ServerUsername string    `json:"server_username,omitempty"` // Only shown to root users
+	ServerPassword string    `json:"server_password,omitempty"` // Only shown to root users
+	ServerIP       string    `json:"server_ip,omitempty"`       // Server IP address
+	UserID         int64     `json:"user_id"`
+	Username       string    `json:"username"`
+	StartTime      time.Time `json:"start_time"`
+	EndTime        time.Time `json:"end_time"`
+	Status         string    `json:"status"` // active, cancelled, completed
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // LoginRequest represents the login request payload
@@ -49,6 +52,12 @@ type LoginRequest struct {
 type RegisterRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+}
+
+// ChangePasswordRequest represents the password change request payload
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required"`
 }
 
 // ReservationRequest represents the reservation request payload

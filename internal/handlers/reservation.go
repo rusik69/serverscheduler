@@ -149,19 +149,27 @@ func GetReservations(c *gin.Context) {
 	var rows *sql.Rows
 	var err error
 
-	// Root users can see all reservations, regular users only see their own
+	// Root users can see all reservations with server credentials, regular users only see their own without credentials
 	if role == "root" {
-		slog.Info("Fetching all reservations (root access)", "user_id", userID, "client_ip", c.ClientIP())
+		slog.Info("Fetching all reservations with server credentials (root access)", "user_id", userID, "client_ip", c.ClientIP())
 		rows, err = database.GetDB().Query(`
-			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, s.name as server_name, u.username 
+			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, 
+			       s.name as server_name, u.username,
+			       COALESCE(s.username, '') as server_username,
+			       COALESCE(s.password, '') as server_password,
+			       COALESCE(s.ip_address, '') as server_ip
 			FROM reservations r 
 			JOIN servers s ON r.server_id = s.id 
 			JOIN users u ON r.user_id = u.id
 			ORDER BY r.start_time DESC`)
 	} else {
-		slog.Info("Fetching user reservations", "user_id", userID, "client_ip", c.ClientIP())
+		slog.Info("Fetching user reservations with server credentials", "user_id", userID, "client_ip", c.ClientIP())
 		rows, err = database.GetDB().Query(`
-			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, s.name as server_name, u.username 
+			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, 
+			       s.name as server_name, u.username,
+			       COALESCE(s.username, '') as server_username,
+			       COALESCE(s.password, '') as server_password,
+			       COALESCE(s.ip_address, '') as server_ip
 			FROM reservations r 
 			JOIN servers s ON r.server_id = s.id 
 			JOIN users u ON r.user_id = u.id
@@ -180,7 +188,7 @@ func GetReservations(c *gin.Context) {
 	var reservations []models.Reservation
 	for rows.Next() {
 		var reservation models.Reservation
-		var serverName, username string
+		var serverName, username, serverUsername, serverPassword, serverIP string
 		if err := rows.Scan(
 			&reservation.ID,
 			&reservation.ServerID,
@@ -190,6 +198,9 @@ func GetReservations(c *gin.Context) {
 			&reservation.Status,
 			&serverName,
 			&username,
+			&serverUsername,
+			&serverPassword,
+			&serverIP,
 		); err != nil {
 			slog.Error("Failed to scan reservation row", "user_id", userID, "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan reservation"})
@@ -197,10 +208,13 @@ func GetReservations(c *gin.Context) {
 		}
 		reservation.ServerName = serverName
 		reservation.Username = username
+		reservation.ServerUsername = serverUsername
+		reservation.ServerPassword = serverPassword
+		reservation.ServerIP = serverIP
 		reservations = append(reservations, reservation)
 	}
 
-	slog.Info("Reservations fetched successfully", "user_id", userID, "count", len(reservations), "client_ip", c.ClientIP())
+	slog.Info("Reservations fetched successfully", "user_id", userID, "count", len(reservations), "show_credentials", true, "role", role, "client_ip", c.ClientIP())
 	c.JSON(http.StatusOK, reservations)
 }
 
@@ -229,13 +243,17 @@ func GetReservation(c *gin.Context) {
 	}
 
 	var reservation models.Reservation
-	var serverName, username string
+	var serverName, username, serverUsername, serverPassword, serverIP string
 
-	// Root users can view any reservation, regular users only their own
+	// Root users can view any reservation with server credentials, regular users only their own without credentials
 	if role == "root" {
-		slog.Info("Fetching reservation (root access)", "reservation_id", id, "user_id", userID, "client_ip", c.ClientIP())
+		slog.Info("Fetching reservation with server credentials (root access)", "reservation_id", id, "user_id", userID, "client_ip", c.ClientIP())
 		err = database.GetDB().QueryRow(`
-			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, s.name as server_name, u.username 
+			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, 
+			       s.name as server_name, u.username,
+			       COALESCE(s.username, '') as server_username,
+			       COALESCE(s.password, '') as server_password,
+			       COALESCE(s.ip_address, '') as server_ip
 			FROM reservations r 
 			JOIN servers s ON r.server_id = s.id 
 			JOIN users u ON r.user_id = u.id
@@ -250,11 +268,18 @@ func GetReservation(c *gin.Context) {
 			&reservation.Status,
 			&serverName,
 			&username,
+			&serverUsername,
+			&serverPassword,
+			&serverIP,
 		)
 	} else {
-		slog.Info("Fetching user reservation", "reservation_id", id, "user_id", userID, "client_ip", c.ClientIP())
+		slog.Info("Fetching user reservation with server credentials", "reservation_id", id, "user_id", userID, "client_ip", c.ClientIP())
 		err = database.GetDB().QueryRow(`
-			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, s.name as server_name, u.username 
+			SELECT r.id, r.server_id, r.user_id, r.start_time, r.end_time, r.status, 
+			       s.name as server_name, u.username,
+			       COALESCE(s.username, '') as server_username,
+			       COALESCE(s.password, '') as server_password,
+			       COALESCE(s.ip_address, '') as server_ip
 			FROM reservations r 
 			JOIN servers s ON r.server_id = s.id 
 			JOIN users u ON r.user_id = u.id
@@ -269,6 +294,9 @@ func GetReservation(c *gin.Context) {
 			&reservation.Status,
 			&serverName,
 			&username,
+			&serverUsername,
+			&serverPassword,
+			&serverIP,
 		)
 	}
 
@@ -283,6 +311,9 @@ func GetReservation(c *gin.Context) {
 
 	reservation.ServerName = serverName
 	reservation.Username = username
+	reservation.ServerUsername = serverUsername
+	reservation.ServerPassword = serverPassword
+	reservation.ServerIP = serverIP
 	c.JSON(http.StatusOK, reservation)
 }
 
@@ -562,6 +593,86 @@ func CancelReservation(c *gin.Context) {
 
 	slog.Info("Reservation cancelled successfully", "reservation_id", id, "server_id", serverID, "user_id", userID, "client_ip", c.ClientIP())
 	c.JSON(http.StatusOK, gin.H{"message": "Reservation cancelled successfully"})
+}
+
+// DeleteReservation permanently deletes a reservation (root only)
+func DeleteReservation(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reservation ID"})
+		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		slog.Warn("Reservation deletion failed - user not authenticated", "reservation_id", id, "client_ip", c.ClientIP())
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	role, exists := c.Get("role")
+	if !exists {
+		slog.Warn("Reservation deletion failed - user role not in context", "reservation_id", id, "user_id", userID, "client_ip", c.ClientIP())
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User role not authenticated"})
+		return
+	}
+
+	// Only root users can permanently delete reservations
+	if role != "root" {
+		slog.Warn("Reservation deletion failed - insufficient privileges", "reservation_id", id, "user_id", userID, "role", role, "client_ip", c.ClientIP())
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only root users can permanently delete reservations"})
+		return
+	}
+
+	// Get reservation details before deletion
+	var serverID int64
+	var status string
+	err = database.GetDB().QueryRow(`
+		SELECT server_id, status FROM reservations WHERE id = ?`,
+		id,
+	).Scan(&serverID, &status)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			slog.Warn("Reservation deletion failed - reservation not found", "reservation_id", id, "user_id", userID)
+			c.JSON(http.StatusNotFound, gin.H{"error": "Reservation not found"})
+			return
+		}
+		slog.Error("Failed to fetch reservation for deletion", "reservation_id", id, "user_id", userID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch reservation"})
+		return
+	}
+
+	// Permanently delete the reservation
+	_, err = database.GetDB().Exec(`DELETE FROM reservations WHERE id = ?`, id)
+	if err != nil {
+		slog.Error("Failed to delete reservation from database", "reservation_id", id, "user_id", userID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete reservation"})
+		return
+	}
+
+	// If the reservation was active, update server status to available
+	if status == "active" {
+		// Check if there are any other active reservations for this server
+		var activeCount int
+		err = database.GetDB().QueryRow(`
+			SELECT COUNT(*) FROM reservations 
+			WHERE server_id = ? AND status = 'active'`,
+			serverID,
+		).Scan(&activeCount)
+
+		if err == nil && activeCount == 0 {
+			// No other active reservations, set server to available
+			_, err = database.GetDB().Exec("UPDATE servers SET status = ? WHERE id = ?", "available", serverID)
+			if err != nil {
+				slog.Error("Failed to update server status after reservation deletion", "server_id", serverID, "reservation_id", id, "user_id", userID, "error", err)
+			}
+		}
+	}
+
+	slog.Info("Reservation deleted permanently", "reservation_id", id, "server_id", serverID, "status", status, "user_id", userID, "client_ip", c.ClientIP())
+	c.JSON(http.StatusOK, gin.H{"message": "Reservation deleted permanently"})
 }
 
 // CleanupExpiredReservations cleans up expired reservations

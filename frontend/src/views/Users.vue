@@ -48,7 +48,6 @@
                     size="small" 
                     type="primary" 
                     @click="editUser(row)"
-                    :disabled="row.username === currentUser.username"
                     class="action-btn"
                   >
                     <el-icon><Edit /></el-icon>
@@ -91,7 +90,11 @@
           />
         </el-form-item>
         <el-form-item label="Role" prop="role">
-          <el-select v-model="userForm.role" placeholder="Select role">
+          <el-select 
+            v-model="userForm.role" 
+            placeholder="Select role"
+            :disabled="isEditingSelf"
+          >
             <el-option 
               label="User" 
               value="user"
@@ -114,6 +117,9 @@
                </div>
             </el-option>
           </el-select>
+          <div v-if="isEditingSelf" class="form-help-text">
+            <el-text type="info" size="small">You cannot change your own role</el-text>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -310,6 +316,10 @@ export default {
       }
     }
 
+    const isEditingSelf = computed(() => {
+      return isEditing.value && userForm.username === currentUser.value.username
+    })
+
     onMounted(fetchUsers)
 
     return {
@@ -323,6 +333,7 @@ export default {
       rules,
       currentUser,
       dialogTitle: computed(() => isEditing.value ? 'Edit User' : 'Add User'),
+      isEditingSelf,
       showAddDialog,
       editUser,
       deleteUser,
@@ -337,6 +348,26 @@ export default {
 .users-container {
   max-width: 1400px;
   margin: 0 auto;
+  padding: 20px;
+}
+
+:deep(.el-card) {
+  background: rgba(44, 62, 80, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: none !important;
+  border-radius: 15px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+:deep(.el-card__header) {
+  background: rgba(52, 73, 94, 0.95) !important;
+  border-bottom: 2px solid #4a6583 !important;
+  border-radius: 15px 15px 0 0 !important;
+}
+
+:deep(.el-card__body) {
+  background: transparent !important;
+  padding: 0 !important;
 }
 
 .card-header {
@@ -356,7 +387,7 @@ export default {
 }
 
 .header-icon {
-  color: #f59e0b;
+  color: #74b9ff;
   font-size: 1.5rem;
 }
 
@@ -369,31 +400,110 @@ export default {
   align-items: center;
 }
 
-/* Table Styling */
+/* Table Styling - High Contrast Dark Theme */
 .modern-table {
   border-radius: 12px !important;
   overflow: hidden;
+  background: #2c3e50 !important;
+}
+
+:deep(.el-table) {
+  background: #2c3e50 !important;
+  color: #ffffff !important;
+}
+
+:deep(.el-table__header-wrapper) {
+  background: #34495e !important;
+}
+
+:deep(.el-table__header) {
+  background: #34495e !important;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: #34495e !important;
+  color: #ffffff !important;
+  border-bottom: 2px solid #4a6583 !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+:deep(.el-table td.el-table__cell) {
+  background: #2c3e50 !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid #4a6583 !important;
+  font-weight: 500;
+}
+
+:deep(.el-table__row) {
+  background: #2c3e50 !important;
+}
+
+:deep(.el-table__row:hover > td.el-table__cell) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table__body tr.hover-row > td.el-table__cell) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table__empty-block) {
+  background: #2c3e50 !important;
+  color: #bdc3c7 !important;
+}
+
+:deep(.el-table__empty-text) {
+  color: #bdc3c7 !important;
+}
+
+/* Ensure all table text has proper contrast */
+:deep(.el-table .cell) {
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+/* ID column styling */
+:deep(.el-table td.el-table__cell:first-child .cell) {
+  color: #74b9ff !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
 }
 
 .username-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #e2e8f0;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .username-icon {
-  color: #f59e0b;
+  color: #74b9ff;
   font-size: 1.1rem;
 }
 
 .role-tag {
   border-radius: 8px !important;
-  font-weight: 500;
-  padding: 4px 12px !important;
+  font-weight: 700;
+  padding: 6px 12px !important;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  color: #ffffff !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.role-tag .el-tag__content) {
+  color: #ffffff !important;
 }
 
 .action-buttons {
@@ -403,20 +513,24 @@ export default {
 
 .action-btn {
   border-radius: 8px !important;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .action-btn:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .action-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* Dialog Styling */
@@ -424,6 +538,10 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.form-help-text {
+  margin-top: 4px;
 }
 
 :deep(.el-dialog) {

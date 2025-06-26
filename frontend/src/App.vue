@@ -25,6 +25,10 @@
           <el-icon><Calendar /></el-icon>
           <span>Reservations</span>
         </el-menu-item>
+        <el-menu-item index="/calendar" class="nav-item">
+          <el-icon><Calendar /></el-icon>
+          <span>Calendar</span>
+        </el-menu-item>
         <el-menu-item v-if="isRoot" index="/users" class="nav-item admin-nav-item">
           <el-icon><Management /></el-icon>
           <span>User Management</span>
@@ -53,6 +57,10 @@
                 <el-icon><Management /></el-icon>
                 User Management
               </el-dropdown-item>
+              <el-dropdown-item @click="showChangePasswordDialog">
+                <el-icon><Lock /></el-icon>
+                Change Password
+              </el-dropdown-item>
               <el-dropdown-item @click="logout">
                 <el-icon><SwitchButton /></el-icon>
                 Logout
@@ -67,13 +75,57 @@
         <router-view />
       </div>
     </el-main>
+
+    <!-- Change Password Dialog -->
+    <el-dialog
+      title="Change Password"
+      v-model="changePasswordVisible"
+      width="500px"
+      :before-close="handleChangePasswordClose"
+    >
+      <el-form :model="passwordForm" :rules="passwordRules" ref="passwordFormRef" label-width="140px">
+        <el-form-item label="Current Password" prop="currentPassword">
+          <el-input 
+            v-model="passwordForm.currentPassword" 
+            type="password" 
+            placeholder="Enter current password"
+            show-password 
+          />
+        </el-form-item>
+        <el-form-item label="New Password" prop="newPassword">
+          <el-input 
+            v-model="passwordForm.newPassword" 
+            type="password" 
+            placeholder="Enter new password (min 6 characters)"
+            show-password 
+          />
+        </el-form-item>
+        <el-form-item label="Confirm Password" prop="confirmPassword">
+          <el-input 
+            v-model="passwordForm.confirmPassword" 
+            type="password" 
+            placeholder="Confirm new password"
+            show-password 
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleChangePasswordClose">Cancel</el-button>
+          <el-button type="primary" @click="handleChangePassword" :loading="changingPassword">
+            Change Password
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
 <script>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { 
   Cpu, 
   House, 
@@ -83,8 +135,10 @@ import {
   Plus, 
   ArrowDown, 
   SwitchButton,
-  Management 
+  Management,
+  Lock
 } from '@element-plus/icons-vue'
+import apiClient from '@/config/api'
 
 export default {
   name: 'App',
@@ -97,7 +151,8 @@ export default {
     Plus,
     ArrowDown,
     SwitchButton,
-    Management
+    Management,
+    Lock
   },
   setup() {
     const store = useStore()
@@ -118,12 +173,87 @@ export default {
       router.push('/login')
     }
 
+    const changePasswordVisible = ref(false)
+    const passwordForm = ref({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    })
+    const passwordRules = {
+      currentPassword: [
+        { required: true, message: 'Please enter your current password', trigger: 'blur' },
+      ],
+      newPassword: [
+        { required: true, message: 'Please enter a new password', trigger: 'blur' },
+        { min: 6, message: 'Password must be at least 6 characters', trigger: 'blur' },
+      ],
+      confirmPassword: [
+        { required: true, message: 'Please confirm your new password', trigger: 'blur' },
+        { validator: (rule, value) => {
+          if (value !== passwordForm.value.newPassword) {
+            return Promise.reject('Passwords do not match')
+          }
+          return Promise.resolve()
+        }, trigger: 'blur' },
+      ],
+    }
+    const passwordFormRef = ref(null)
+    const changingPassword = ref(false)
+
+    const showChangePasswordDialog = () => {
+      changePasswordVisible.value = true
+    }
+
+    const handleChangePasswordClose = () => {
+      changePasswordVisible.value = false
+      passwordForm.value = {
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      }
+    }
+
+    const handleChangePassword = async () => {
+      if (!passwordFormRef.value) return
+      
+      try {
+        await passwordFormRef.value.validate()
+        changingPassword.value = true
+        
+        await apiClient.post('/api/auth/change-password', {
+          current_password: passwordForm.value.currentPassword,
+          new_password: passwordForm.value.newPassword
+        })
+        
+        ElMessage.success('Password changed successfully')
+        handleChangePasswordClose()
+      } catch (error) {
+        if (error.response?.data?.error) {
+          ElMessage.error(error.response.data.error)
+        } else if (error.message) {
+          ElMessage.error('Form validation failed')
+        } else {
+          ElMessage.error('Failed to change password')
+        }
+      } finally {
+        changingPassword.value = false
+      }
+    }
+
     return {
       isAuthenticated,
       username,
       isRoot,
       logout,
-      $router: router
+      $router: router,
+      changePasswordVisible,
+      passwordForm,
+      passwordRules,
+      passwordFormRef,
+      changingPassword,
+      showChangePasswordDialog,
+      handleChangePasswordClose,
+      handleChangePassword
     }
   }
 }
@@ -520,5 +650,54 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(96, 165, 250, 0.7);
+}
+
+/* Password Change Dialog Styling */
+.el-dialog {
+  background: rgba(30, 41, 59, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.el-dialog__header {
+  background: rgba(15, 23, 42, 0.8);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  padding: 20px 24px;
+}
+
+.el-dialog__title {
+  color: #f1f5f9 !important;
+  font-weight: 600;
+}
+
+.el-dialog__body {
+  padding: 24px;
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.el-form-item__label {
+  color: #e2e8f0 !important;
+  font-weight: 500;
+}
+
+.el-input__inner {
+  background: rgba(51, 65, 85, 0.8) !important;
+  border: 1px solid rgba(71, 85, 105, 0.5) !important;
+  color: #f1f5f9 !important;
+}
+
+.el-input__inner:focus {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2) !important;
+}
+
+.dialog-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.dialog-footer .el-button {
+  min-width: 100px;
 }
 </style> 

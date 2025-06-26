@@ -17,6 +17,8 @@ run:
 test:
 	go test -v ./...
 
+test-all: test frontend-test
+
 clean:
 	go clean
 	rm -f $(BINARY_NAME)
@@ -24,6 +26,15 @@ clean:
 # Frontend commands
 frontend-build:
 	cd frontend && npm install && npm run build
+
+frontend-test:
+	cd frontend && npm test
+
+frontend-test-watch:
+	cd frontend && npm run test:unit:watch
+
+frontend-test-coverage:
+	cd frontend && npm run test:unit:coverage
 
 # Separate Docker builds
 docker-build-backend:
@@ -62,7 +73,7 @@ docker-compose-restart:
 	docker-compose restart
 
 # Development commands
-dev-backend:
+dev-backend-run:
 	ROOT_PASSWORD=password go run ./cmd/server
 
 dev-frontend-run:

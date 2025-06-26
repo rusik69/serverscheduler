@@ -42,6 +42,28 @@
                 </div>
               </template>
             </el-table-column>
+            <!-- Password column - Only visible to root users -->
+            <el-table-column v-if="isRoot" label="Password" min-width="150">
+              <template #default="{ row }">
+                <div v-if="row.password" class="password-field">
+                  <el-tag 
+                    size="small" 
+                    type="warning" 
+                    @click="copyToClipboard(row.password)" 
+                    class="clickable-tag"
+                  >
+                    {{ showPasswords ? row.password : '••••••••' }}
+                    <el-icon><CopyDocument /></el-icon>
+                  </el-tag>
+                  <el-button size="small" text @click="togglePasswordVisibility">
+                    <el-icon><ViewIcon v-if="!showPasswords" /><Hide v-else /></el-icon>
+                  </el-button>
+                </div>
+                <div v-else class="no-password">
+                  <el-text type="info">Not set</el-text>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column prop="status" label="Status" width="120">
               <template #default="{ row }">
                 <el-tag 
@@ -117,6 +139,7 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useStore } from 'vuex'
 import { 
   Monitor, 
   Connection, 
@@ -125,7 +148,10 @@ import {
   CircleClose, 
   Edit, 
   Delete, 
-  Plus 
+  Plus,
+  CopyDocument,
+  View as ViewIcon,
+  Hide
 } from '@element-plus/icons-vue'
 import apiClient from '@/config/api'
 
@@ -139,7 +165,10 @@ export default {
     CircleClose,
     Edit,
     Delete,
-    Plus
+    Plus,
+    CopyDocument,
+    ViewIcon,
+    Hide
   },
   setup() {
     const servers = ref([])
@@ -148,6 +177,10 @@ export default {
     const isEditing = ref(false)
     const submitting = ref(false)
     const serverFormRef = ref(null)
+    const showPasswords = ref(false)
+    const store = useStore()
+
+    const isRoot = computed(() => store.getters['auth/user']?.role === 'root')
 
     const serverForm = reactive({
       id: null,
@@ -271,6 +304,20 @@ export default {
       }
     }
 
+    const copyToClipboard = (text) => {
+      const input = document.createElement('input')
+      input.value = text
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+      ElMessage.success('Password copied to clipboard')
+    }
+
+    const togglePasswordVisibility = () => {
+      showPasswords.value = !showPasswords.value
+    }
+
     onMounted(fetchServers)
 
     return {
@@ -286,7 +333,11 @@ export default {
       showAddDialog,
       editServer,
       deleteServer,
-      handleServerSubmit
+      handleServerSubmit,
+      copyToClipboard,
+      togglePasswordVisibility,
+      isRoot,
+      showPasswords
     }
   }
 }
@@ -296,6 +347,26 @@ export default {
 .servers-container {
   max-width: 1400px;
   margin: 0 auto;
+  padding: 20px;
+}
+
+:deep(.el-card) {
+  background: rgba(44, 62, 80, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: none !important;
+  border-radius: 15px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+:deep(.el-card__header) {
+  background: rgba(52, 73, 94, 0.95) !important;
+  border-bottom: 2px solid #4a6583 !important;
+  border-radius: 15px 15px 0 0 !important;
+}
+
+:deep(.el-card__body) {
+  background: transparent !important;
+  padding: 0 !important;
 }
 
 .card-header {
@@ -315,7 +386,7 @@ export default {
 }
 
 .header-icon {
-  color: #60a5fa;
+  color: #74b9ff;
   font-size: 1.5rem;
 }
 
@@ -328,10 +399,79 @@ export default {
   align-items: center;
 }
 
-/* Table Styling */
+/* Table Styling - High Contrast Dark Theme */
 .modern-table {
   border-radius: 12px !important;
   overflow: hidden;
+  background: #2c3e50 !important;
+}
+
+:deep(.el-table) {
+  background: #2c3e50 !important;
+  color: #ffffff !important;
+}
+
+:deep(.el-table__header-wrapper) {
+  background: #34495e !important;
+}
+
+:deep(.el-table__header) {
+  background: #34495e !important;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: #34495e !important;
+  color: #ffffff !important;
+  border-bottom: 2px solid #4a6583 !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+:deep(.el-table td.el-table__cell) {
+  background: #2c3e50 !important;
+  color: #ffffff !important;
+  border-bottom: 1px solid #4a6583 !important;
+  font-weight: 500;
+}
+
+:deep(.el-table__row) {
+  background: #2c3e50 !important;
+}
+
+:deep(.el-table__row:hover > td.el-table__cell) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table__body tr.hover-row > td.el-table__cell) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+  background: rgba(116, 185, 255, 0.15) !important;
+}
+
+:deep(.el-table__empty-block) {
+  background: #2c3e50 !important;
+  color: #bdc3c7 !important;
+}
+
+:deep(.el-table__empty-text) {
+  color: #bdc3c7 !important;
+}
+
+/* Ensure all table text has proper contrast */
+:deep(.el-table .cell) {
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+/* ID column styling */
+:deep(.el-table td.el-table__cell:first-child .cell) {
+  color: #74b9ff !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
 }
 
 .server-name,
@@ -340,31 +480,37 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #e2e8f0;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .server-name .el-icon {
-  color: #60a5fa;
+  color: #74b9ff;
   font-size: 1.1rem;
 }
 
 .ip-address .el-icon {
-  color: #10b981;
+  color: #00d084;
   font-size: 1rem;
 }
 
 .username .el-icon {
-  color: #f59e0b;
+  color: #ffd93d;
   font-size: 1rem;
 }
 
 .status-tag {
   border-radius: 8px !important;
-  font-weight: 500;
-  padding: 4px 12px !important;
+  font-weight: 700;
+  padding: 6px 12px !important;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  color: #ffffff !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .action-buttons {
@@ -374,15 +520,17 @@ export default {
 
 .action-btn {
   border-radius: 8px !important;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .action-btn:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Dialog Styling */
@@ -448,5 +596,29 @@ export default {
   .username span {
     font-size: 0.875rem;
   }
+}
+
+/* Password Field Styling */
+.password-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clickable-tag {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Courier New', monospace;
+}
+
+.clickable-tag:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.no-password {
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
 }
 </style> 
