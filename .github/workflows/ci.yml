@@ -89,12 +89,12 @@ jobs:
     - name: Run frontend tests
       run: |
         cd frontend
-        npm run test:unit
+        npm run test:unit:ci
 
     - name: Run frontend tests with coverage
       run: |
         cd frontend
-        npm run test:unit:coverage
+        npm run test:unit:ci -- --coverage
 
     - name: Upload frontend coverage to Codecov
       uses: codecov/codecov-action@v3

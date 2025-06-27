@@ -233,6 +233,11 @@ describe('Reservations.vue', () => {
         end_time: '2024-01-03T12:00:00Z'
       }
 
+      // Mock form validation
+      wrapper.vm.reservationFormRef = {
+        validate: jest.fn().mockResolvedValue(true)
+      }
+
       Object.assign(wrapper.vm.reservationForm, newReservation)
       await wrapper.vm.handleReservationSubmit()
 
@@ -242,6 +247,11 @@ describe('Reservations.vue', () => {
 
     it('should update an existing reservation', async () => {
       const updatedReservation = { ...mockReservations[0], start_time: '2024-01-01T11:00:00Z' }
+      
+      // Mock form validation
+      wrapper.vm.reservationFormRef = {
+        validate: jest.fn().mockResolvedValue(true)
+      }
       
       wrapper.vm.isEditing = true
       Object.assign(wrapper.vm.reservationForm, updatedReservation)

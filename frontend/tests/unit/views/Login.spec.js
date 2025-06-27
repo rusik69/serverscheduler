@@ -56,7 +56,7 @@ describe('Login.vue', () => {
             isAuthenticated: (state) => state.isAuthenticated
           },
           actions: {
-            login: mockDispatch
+            login: (context, payload) => mockDispatch(payload)
           }
         }
       }

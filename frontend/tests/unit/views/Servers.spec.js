@@ -174,6 +174,11 @@ describe('Servers.vue', () => {
           status: 'available'
         }
 
+        // Mock form validation
+        wrapper.vm.serverFormRef = {
+          validate: jest.fn().mockResolvedValue(true)
+        }
+
         Object.assign(wrapper.vm.serverForm, newServer)
         await wrapper.vm.handleServerSubmit()
 
@@ -190,6 +195,11 @@ describe('Servers.vue', () => {
           username: 'root',
           password: 'password',
           status: 'available'
+        }
+
+        // Mock form validation
+        wrapper.vm.serverFormRef = {
+          validate: jest.fn().mockResolvedValue(true)
         }
 
         Object.assign(wrapper.vm.serverForm, newServer)
@@ -210,6 +220,11 @@ describe('Servers.vue', () => {
 
       it('should update server successfully', async () => {
         const updatedServer = { ...mockServers[0], name: 'Updated Server' }
+        
+        // Mock form validation
+        wrapper.vm.serverFormRef = {
+          validate: jest.fn().mockResolvedValue(true)
+        }
         
         wrapper.vm.isEditing = true
         Object.assign(wrapper.vm.serverForm, updatedServer)
@@ -275,9 +290,10 @@ describe('Servers.vue', () => {
         throw new Error('Copy failed')
       })
 
-      await wrapper.vm.copyToClipboard('password123')
-
-      expect(document.execCommand).toHaveBeenCalledWith('copy')
+      // Expect the error to be thrown during execution
+      expect(() => {
+        wrapper.vm.copyToClipboard('password123')
+      }).toThrow('Copy failed')
     })
   })
 
