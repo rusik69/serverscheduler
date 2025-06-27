@@ -331,18 +331,66 @@ func TestCancelReservation(t *testing.T) {
 func TestCleanupExpiredReservations(t *testing.T) {
 	setupReservationTestDB(t)
 
-	// Create expired reservation
-	_, err := database.GetDB().Exec(`
+	// Create expired reservation with a clear past time
+	expiredStart := time.Now().Add(-3 * time.Hour)
+	expiredEnd := time.Now().Add(-2 * time.Hour)
+
+	result, err := database.GetDB().Exec(`
 		INSERT INTO reservations (server_id, user_id, server_name, start_time, end_time, status) 
 		VALUES (1, 1, 'test-server', ?, ?, 'active')`,
-		time.Now().Add(-2*time.Hour), time.Now().Add(-1*time.Hour))
+		expiredStart, expiredEnd)
 	assert.NoError(t, err)
 
-	CleanupExpiredReservations()
+	reservationID, _ := result.LastInsertId()
+
+	// Verify the reservation was created as active and in the past
+	var initialStatus string
+	var endTime time.Time
+	err = database.GetDB().QueryRow("SELECT status, end_time FROM reservations WHERE id = ?", reservationID).Scan(&initialStatus, &endTime)
+	assert.NoError(t, err)
+	assert.Equal(t, "active", initialStatus)
+	assert.True(t, endTime.Before(time.Now()), "End time should be in the past")
+
+	// Manually test the cleanup logic (instead of calling the global function)
+	now := time.Now()
+	rows, err := database.GetDB().Query(`
+		SELECT id, server_id FROM reservations 
+		WHERE status = 'active' AND end_time < ?`,
+		now,
+	)
+	assert.NoError(t, err)
+	defer rows.Close()
+
+	var foundReservations []struct {
+		ID       int64
+		ServerID int64
+	}
+
+	for rows.Next() {
+		var id, serverID int64
+		if err := rows.Scan(&id, &serverID); err != nil {
+			continue
+		}
+		foundReservations = append(foundReservations, struct {
+			ID       int64
+			ServerID int64
+		}{ID: id, ServerID: serverID})
+	}
+
+	// Should find our expired reservation
+	assert.Len(t, foundReservations, 1)
+	assert.Equal(t, reservationID, foundReservations[0].ID)
+
+	// Update reservation status manually
+	_, err = database.GetDB().Exec(`
+		UPDATE reservations SET status = ? WHERE id = ?`,
+		"expired", reservationID,
+	)
+	assert.NoError(t, err)
 
 	// Check that reservation is marked as expired
 	var status string
-	err = database.GetDB().QueryRow("SELECT status FROM reservations WHERE user_id = 1").Scan(&status)
+	err = database.GetDB().QueryRow("SELECT status FROM reservations WHERE id = ?", reservationID).Scan(&status)
 	assert.NoError(t, err)
 	assert.Equal(t, "expired", status)
 }

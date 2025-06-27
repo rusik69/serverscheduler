@@ -15,6 +15,13 @@ import (
 
 // GetUsers returns all users (root only)
 func GetUsers(c *gin.Context) {
+	// Check if user is root
+	role, exists := c.Get("role")
+	if !exists || role != "root" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can list users"})
+		return
+	}
+
 	username, _ := c.Get("username")
 	slog.Info("Fetching all users", "admin_user", username, "client_ip", c.ClientIP())
 
@@ -43,6 +50,13 @@ func GetUsers(c *gin.Context) {
 
 // GetUser returns a specific user (root only)
 func GetUser(c *gin.Context) {
+	// Check if user is root
+	role, exists := c.Get("role")
+	if !exists || role != "root" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can view users"})
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -75,6 +89,13 @@ func GetUser(c *gin.Context) {
 
 // CreateUser creates a new user (root only)
 func CreateUser(c *gin.Context) {
+	// Check if user is root
+	role, exists := c.Get("role")
+	if !exists || role != "root" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can create users"})
+		return
+	}
+
 	var req struct {
 		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
@@ -93,20 +114,20 @@ func CreateUser(c *gin.Context) {
 	// Validate role
 	if req.Role != "user" && req.Role != "root" {
 		slog.Warn("User creation failed - invalid role", "role", req.Role, "admin_user", adminUser)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role. Must be 'user' or 'root'"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Role must be either 'user' or 'root'"})
 		return
 	}
 
 	// Check if username already exists
-	var exists bool
-	err := database.GetDB().QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", req.Username).Scan(&exists)
+	var userExists bool
+	err := database.GetDB().QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", req.Username).Scan(&userExists)
 	if err != nil {
 		slog.Error("Failed to check username existence", "username", req.Username, "admin_user", adminUser, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check username"})
 		return
 	}
 
-	if exists {
+	if userExists {
 		slog.Warn("User creation failed - username already exists", "username", req.Username, "admin_user", adminUser)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
 		return
@@ -144,6 +165,13 @@ func CreateUser(c *gin.Context) {
 
 // UpdateUser updates an existing user (root only)
 func UpdateUser(c *gin.Context) {
+	// Check if user is root
+	role, exists := c.Get("role")
+	if !exists || role != "root" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can update users"})
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -186,7 +214,7 @@ func UpdateUser(c *gin.Context) {
 	// Prevent admins from modifying themselves (security measure)
 	if adminUserID == id {
 		slog.Warn("User update failed - cannot modify own account", "user_id", id, "admin_user", adminUser)
-		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot modify your own account"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot modify your own account"})
 		return
 	}
 
@@ -260,6 +288,13 @@ func UpdateUser(c *gin.Context) {
 
 // DeleteUser deletes a user (root only)
 func DeleteUser(c *gin.Context) {
+	// Check if user is root
+	role, exists := c.Get("role")
+	if !exists || role != "root" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can delete users"})
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -290,7 +325,7 @@ func DeleteUser(c *gin.Context) {
 	// Prevent admins from deleting themselves
 	if adminUserID == id {
 		slog.Warn("User deletion failed - cannot delete own account", "user_id", id, "admin_user", adminUser)
-		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete your own account"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete your own account"})
 		return
 	}
 

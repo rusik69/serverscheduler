@@ -1,6 +1,6 @@
 # Makefile for ServerScheduler
 
-.PHONY: build run test clean frontend-build frontend-serve docker-build-backend docker-build-frontend docker-push-backend docker-push-frontend docker-push-all docker-compose-up docker-compose-down
+.PHONY: build run test clean frontend-build frontend-serve docker-build-backend docker-build-frontend docker-push-backend docker-push-frontend docker-push-all docker-compose-up docker-compose-down deploy deploy-custom setup-server
 
 # Build variables
 BINARY_NAME=serverscheduler

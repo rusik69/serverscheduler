@@ -300,7 +300,7 @@ func TestChangePassword(t *testing.T) {
 				"new_password": "newpassword456",
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedError:  "Current password is required",
+			expectedError:  "Key: 'ChangePasswordRequest.CurrentPassword' Error:Field validation for 'CurrentPassword' failed on the 'required' tag",
 		},
 		{
 			name:     "Missing new password",
@@ -311,7 +311,7 @@ func TestChangePassword(t *testing.T) {
 				"current_password": "oldpassword123",
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedError:  "New password is required",
+			expectedError:  "Key: 'ChangePasswordRequest.NewPassword' Error:Field validation for 'NewPassword' failed on the 'required' tag",
 		},
 		{
 			name:     "New password too short",

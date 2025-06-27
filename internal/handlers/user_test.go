@@ -67,8 +67,9 @@ func TestGetUsers(t *testing.T) {
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
 			if tt.expectedStatus == http.StatusOK {
-				var users []models.User
-				json.Unmarshal(w.Body.Bytes(), &users)
+				var response map[string][]models.User
+				json.Unmarshal(w.Body.Bytes(), &response)
+				users := response["users"]
 				assert.Equal(t, tt.expectedCount, len(users))
 			}
 		})
@@ -212,7 +213,13 @@ func TestCreateUser(t *testing.T) {
 			c.Set("userID", tt.userID)
 			c.Set("role", tt.role)
 
-			body, _ := json.Marshal(tt.newUser)
+			// Create request body with password field included
+			requestBody := map[string]interface{}{
+				"username": tt.newUser.Username,
+				"password": tt.newUser.Password,
+				"role":     tt.newUser.Role,
+			}
+			body, _ := json.Marshal(requestBody)
 			c.Request = httptest.NewRequest("POST", "/api/users", bytes.NewBuffer(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 
