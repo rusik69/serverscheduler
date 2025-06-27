@@ -18,5 +18,17 @@ module.exports = {
     'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
     'vue/multi-word-component-names': 'off',
     'no-unused-vars': 'warn'
-  }
+  },
+  overrides: [
+    {
+      files: [
+        '**/__tests__/*.{j,t}s?(x)',
+        '**/tests/unit/**/*.spec.{j,t}s?(x)',
+        '**/tests/setup.js'
+      ],
+      env: {
+        jest: true
+      }
+    }
+  ]
 } 
