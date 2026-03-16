@@ -1,47 +1,12 @@
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: serverscheduler-backend
+  serverscheduler:
+    build: .
+    image: serverscheduler:latest
+    env_file: .env
     ports:
       - "8080:8080"
+    environment:
+      - DB_PATH=/app/data/serverscheduler.db
     volumes:
       - ./data:/app/data
-    environment:
-      - PORT=8080
-      - DB_PATH=/app/data/serverscheduler.db
-      # Uncomment to set a specific root password
-      # - ROOT_PASSWORD=your_secure_password_here
-      # Uncomment to reset root password on startup
-      # - RESET_ROOT_PASSWORD=true
-    networks:
-      - serverscheduler-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 -O /dev/null http://localhost:8080/api/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: serverscheduler-frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    networks:
-      - serverscheduler-network
-    restart: unless-stopped
-
-networks:
-  serverscheduler-network:
-    driver: bridge
-
-volumes:
-  data:
-    driver: local 

@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="register-page">
+  <div class="register-card card">
+    <h1>Register</h1>
+    <p class="subtitle">Create an account to schedule server access</p>
+    <form method="POST" action="/register">
+      {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+      <div class="form-group">
+        <label>Username</label>
+        <input name="username" type="text" required autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Password (min 6 characters)</label>
+        <input name="password" type="password" required minlength="6" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label>SSH Public Key</label>
+        <textarea name="ssh_public_key" required placeholder="Paste your SSH public key (e.g. ssh-rsa AAAA...)" rows="4"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Register</button>
+    </form>
+    <p class="login-link">Already have an account? <a href="/login">Sign in</a></p>
+  </div>
+</div>
+{{end}}

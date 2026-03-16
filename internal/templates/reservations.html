@@ -1,0 +1,208 @@
+{{define "content"}}
+<div>
+  <h2>Reservations</h2>
+  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+  {{if .CanCreate}}
+  <div class="card">
+    <h3>New Reservation</h3>
+    <form method="POST" action="/reservations/add" class="reservation-form">
+      <div class="form-group">
+        <label>Server</label>
+        <select name="server_id" required>
+          <option value="">Select server</option>
+          {{range .Servers}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Start</label>
+        <input name="start_time" type="datetime-local" required />
+      </div>
+      <div class="form-group">
+        <label>End</label>
+        <input name="end_time" type="datetime-local" required />
+        <div class="duration-btns">
+          <span class="muted">Duration:</span>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="1">1h</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="4">4h</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="8">8h</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="24">1d</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="168">1w</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Create</button>
+    </form>
+  </div>
+  {{end}}
+  {{if .IsAdmin}}
+  <div class="card">
+    <h3>Create Reservation for User</h3>
+    <form method="POST" action="/reservations/add-admin" class="reservation-form">
+      <div class="form-group">
+        <label>User</label>
+        <select name="user_id" required>
+          <option value="">Select user</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Username}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Server</label>
+        <select name="server_id" required>
+          <option value="">Select server</option>
+          {{range .Servers}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Start</label>
+        <input name="start_time" type="datetime-local" required />
+      </div>
+      <div class="form-group">
+        <label>End</label>
+        <input name="end_time" type="datetime-local" required />
+        <div class="duration-btns">
+          <span class="muted">Duration:</span>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="1">1h</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="4">4h</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="8">8h</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="24">1d</button>
+          <button type="button" class="btn btn-sm dur-btn" data-hours="168">1w</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Create</button>
+    </form>
+  </div>
+  {{end}}
+  <div class="card" id="reservations-card">
+    <h3>{{if .IsAdmin}}All Reservations{{else}}My Reservations{{end}}</h3>
+    <div id="reservations-list">
+    {{if .Reservations}}
+    <table>
+      <thead>
+        <tr>
+          <th>Server</th>
+          <th>User</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="reservations-tbody">
+        {{range .Reservations}}
+        <tr>
+          <td>{{.ServerName}}</td>
+          <td>{{.Username}}</td>
+          <td>{{formatTime .StartTime}}</td>
+          <td>{{formatTime .EndTime}}</td>
+          <td><span class="status-{{.Status}}">{{.Status}}</span></td>
+          <td>
+            {{if or (eq .Status "pending") (eq .Status "active")}}
+            <form method="POST" action="/reservations/{{.ID}}/cancel" style="display:inline" onsubmit="return confirm('Cancel this reservation?')">
+              <button type="submit" class="btn btn-sm btn-danger">Cancel</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p>No reservations.</p>
+    {{end}}
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function toLocalISO(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function roundUp15(d) {
+    var m = d.getMinutes();
+    d.setMinutes(m % 15 === 0 ? m : m + (15 - m % 15));
+    d.setSeconds(0, 0);
+    return d;
+  }
+  function addHours(d, h) {
+    var out = new Date(d);
+    out.setTime(out.getTime() + h * 60 * 60 * 1000);
+    return out;
+  }
+  function initForm(form) {
+    var start = form.querySelector('input[name="start_time"]');
+    var end = form.querySelector('input[name="end_time"]');
+    var durBtns = form.querySelectorAll('.dur-btn');
+    if (!start || !end) return;
+    var now = new Date();
+    var startVal = roundUp15(new Date(now));
+    if (startVal <= now) startVal.setMinutes(startVal.getMinutes() + 15);
+    var endVal = addHours(startVal, 1);
+    start.value = toLocalISO(startVal);
+    end.value = toLocalISO(endVal);
+    start.min = toLocalISO(now);
+    end.min = toLocalISO(startVal);
+    durBtns.forEach(function(btn) { btn.classList.remove('active'); });
+    durBtns[0].classList.add('active');
+    function setEndFromDuration(hours) {
+      var s = new Date(start.value);
+      end.value = toLocalISO(addHours(s, hours));
+      end.min = toLocalISO(s);
+      durBtns.forEach(function(b) { b.classList.remove('active'); });
+      var match = form.querySelector('.dur-btn[data-hours="' + hours + '"]');
+      if (match) match.classList.add('active');
+    }
+    durBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        setEndFromDuration(parseInt(btn.getAttribute('data-hours'), 10));
+      });
+    });
+    start.addEventListener('change', function() {
+      var s = new Date(start.value);
+      var e = new Date(end.value);
+      end.min = toLocalISO(s);
+      if (e <= s) {
+        var active = form.querySelector('.dur-btn.active');
+        var h = active ? parseInt(active.getAttribute('data-hours'), 10) : 1;
+        end.value = toLocalISO(addHours(s, h));
+      }
+    });
+  }
+  document.querySelectorAll('.reservation-form').forEach(initForm);
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+  function refreshReservations() {
+    fetch('/reservations/data', { credentials: 'same-origin' })
+      .then(function(r) {
+        if (!r.ok) return;
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data || !Array.isArray(data)) return;
+        var list = document.getElementById('reservations-list');
+        if (!list) return;
+        if (data.length === 0) {
+          list.innerHTML = '<p>No reservations.</p>';
+          return;
+        }
+        var html = '<table><thead><tr><th>Server</th><th>User</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead><tbody id="reservations-tbody">';
+        data.forEach(function(r) {
+          html += '<tr><td>' + escapeHtml(r.server_name) + '</td><td>' + escapeHtml(r.username) + '</td><td>' + escapeHtml(r.start_formatted) + '</td><td>' + escapeHtml(r.end_formatted) + '</td><td><span class="status-' + escapeHtml(r.status) + '">' + escapeHtml(r.status) + '</span></td><td>';
+          if (r.can_cancel) {
+            html += '<form method="POST" action="/reservations/' + r.id + '/cancel" style="display:inline" onsubmit="return confirm(\'Cancel this reservation?\')"><button type="submit" class="btn btn-sm btn-danger">Cancel</button></form>';
+          }
+          html += '</td></tr>';
+        });
+        html += '</tbody></table>';
+        list.innerHTML = html;
+      })
+      .catch(function() {});
+  }
+  setInterval(refreshReservations, 15000);
+})();
+</script>
+{{end}}

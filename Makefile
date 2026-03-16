@@ -1,88 +1,39 @@
-# Makefile for ServerScheduler
+.PHONY: build dev test docker-build podman-build podman-run podman-stop docker-compose-up docker-compose-down ensure-env
 
-.PHONY: build run test clean frontend-build frontend-serve docker-build-backend docker-build-frontend docker-push-backend docker-push-frontend docker-push-all docker-compose-up docker-compose-down deploy deploy-custom setup-server
-
-# Build variables
-BINARY_NAME=serverscheduler
-DOCKER_IMAGE?=ghcr.io/rusik69/serverscheduler
-DOCKER_TAG?=latest
-
-# Backend commands
 build:
-	go build -o $(BINARY_NAME) ./cmd/server
+	CGO_ENABLED=1 go build -o server ./cmd/server
 
-run:
-	go run ./cmd/server
+dev: build
+	./server
 
 test:
-	go test -v ./...
+	go test ./...
 
-test-all: test frontend-test
+# Podman (for local testing)
+podman-build:
+	podman build -t serverscheduler:latest .
 
-clean:
-	go clean
-	rm -f $(BINARY_NAME)
+ensure-env:
+	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example")
 
-# Frontend commands
-frontend-build:
-	cd frontend && npm install && npm run build
+podman-run: ensure-env podman-build
+	podman rm -f serverscheduler 2>/dev/null || true
+	podman run -d --name serverscheduler -p 8080:8080 \
+		--env-file .env \
+		-e DB_PATH=/app/data/serverscheduler.db \
+		-v $(PWD)/data:/app/data \
+		serverscheduler:latest
 
-frontend-test:
-	cd frontend && npm test
+podman-stop:
+	podman stop serverscheduler 2>/dev/null || true
+	podman rm serverscheduler 2>/dev/null || true
 
-frontend-test-watch:
-	cd frontend && npm run test:unit:watch
+# Docker (for production)
+docker-build:
+	docker build -t serverscheduler:latest .
 
-frontend-test-coverage:
-	cd frontend && npm run test:unit:coverage
-
-# Separate Docker builds
-docker-build-backend:
-	docker build -f Dockerfile.backend -t $(DOCKER_IMAGE)-backend:$(DOCKER_TAG) .
-
-docker-build-frontend:
-	docker build -f frontend/Dockerfile -t $(DOCKER_IMAGE)-frontend:$(DOCKER_TAG) ./frontend
-
-docker-build-all: docker-build-backend docker-build-frontend
-
-# Push separate images
-docker-push-backend:
-	docker build -f Dockerfile.backend -t $(DOCKER_IMAGE)-backend:$(DOCKER_TAG) .
-	docker push $(DOCKER_IMAGE)-backend:$(DOCKER_TAG)
-
-docker-push-frontend:
-	docker build -f frontend/Dockerfile -t $(DOCKER_IMAGE)-frontend:$(DOCKER_TAG) ./frontend
-	docker push $(DOCKER_IMAGE)-frontend:$(DOCKER_TAG)
-
-docker-push-all: docker-push-backend docker-push-frontend
-
-# Docker Compose commands
-docker-compose-up:
-	docker-compose up -d
+docker-compose-up: ensure-env
+	docker compose up -d
 
 docker-compose-down:
-	docker-compose down
-
-docker-compose-build:
-	docker-compose build
-
-docker-compose-logs:
-	docker-compose logs -f
-
-docker-compose-restart:
-	docker-compose restart
-
-# Development commands
-dev-backend-run:
-	ROOT_PASSWORD=password go run ./cmd/server
-
-dev-frontend-run:
-	cd frontend && npm run serve
-
-dev-frontend-build:
-	cd frontend && npm install && npm run build
-
-# Clean up Docker resources
-docker-clean:
-	docker-compose down -v
-	docker system prune -f 
+	docker compose down

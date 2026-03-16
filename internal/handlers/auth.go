@@ -1,264 +1,183 @@
 package handlers
 
 import (
-	"database/sql"
-	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rusik69/serverscheduler/internal/database"
+	"github.com/rusik69/serverscheduler/internal/config"
+	"github.com/rusik69/serverscheduler/internal/logger"
 	"github.com/rusik69/serverscheduler/internal/middleware"
-	"github.com/rusik69/serverscheduler/internal/models"
+	"github.com/rusik69/serverscheduler/internal/services"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Register handles user registration
-func Register(c *gin.Context) {
-	var req models.RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("Invalid registration request", "error", err, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Validate required fields
-	if req.Username == "" {
-		slog.Warn("Registration attempt with empty username", "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
-		return
-	}
-	if req.Password == "" {
-		slog.Warn("Registration attempt with empty password", "username", req.Username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required"})
-		return
-	}
-
-	slog.Info("User registration attempt", "username", req.Username, "client_ip", c.ClientIP())
-
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		slog.Error("Failed to hash password during registration", "username", req.Username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-		return
-	}
-
-	// Insert user into database
-	_, err = database.GetDB().Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		req.Username, string(hashedPassword), "user")
-	if err != nil {
-		slog.Error("Failed to create user in database", "username", req.Username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-		return
-	}
-
-	slog.Info("User registered successfully", "username", req.Username, "client_ip", c.ClientIP())
-	c.JSON(http.StatusCreated, gin.H{"message": "User created successfully"})
+// AuthHandler handles auth endpoints
+type AuthHandler struct {
+	user   services.UserService
+	config config.Config
 }
 
-// Login handles user login
-func Login(c *gin.Context) {
-	var loginRequest models.LoginRequest
+// NewAuthHandler creates an AuthHandler
+func NewAuthHandler(user services.UserService, cfg config.Config) *AuthHandler {
+	return &AuthHandler{user: user, config: cfg}
+}
 
-	if err := c.ShouldBindJSON(&loginRequest); err != nil {
-		slog.Warn("Invalid login request", "error", err, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	slog.Info("Login attempt", "username", loginRequest.Username, "client_ip", c.ClientIP())
-
-	// Get user from database
-	var user models.User
-	var hashedPassword string
-	err := database.GetDB().QueryRow("SELECT id, username, password, role FROM users WHERE username = ?",
-		loginRequest.Username).Scan(&user.ID, &user.Username, &hashedPassword, &user.Role)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			slog.Warn("Login failed - user not found", "username", loginRequest.Username, "client_ip", c.ClientIP())
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+// LoginPage renders the login form
+func (h *AuthHandler) LoginPage(c *gin.Context) {
+	if sessionID, _ := c.Cookie("session_id"); sessionID != "" {
+		if _, exists := middleware.GetSessionStore().GetSession(sessionID); exists {
+			c.Redirect(http.StatusFound, "/reservations")
 			return
 		}
-		slog.Error("Database error during login", "username", loginRequest.Username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
 	}
-
-	// Compare passwords
-	err = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(loginRequest.Password))
-	if err != nil {
-		slog.Warn("Login failed - invalid password", "username", loginRequest.Username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-		return
-	}
-
-	// Generate JWT token using the middleware's GenerateToken function
-	tokenString, err := middleware.GenerateToken(user.ID, user.Username, user.Role)
-	if err != nil {
-		slog.Error("Failed to generate token", "username", loginRequest.Username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-		return
-	}
-
-	slog.Info("Login successful", "username", loginRequest.Username, "user_id", user.ID, "role", user.Role, "client_ip", c.ClientIP())
-	c.JSON(http.StatusOK, gin.H{
-		"token": tokenString,
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"role":     user.Role,
-		},
-	})
+	bd := baseData(c, h.user, h.config, "Login", "")
+	bd.Error = c.Query("error")
+	render(c, "login", bd)
 }
 
-// GetUserInfo returns information about the current user
-func GetUserInfo(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+// Login handles form POST
+func (h *AuthHandler) Login(c *gin.Context) {
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+	if username == "" || password == "" {
+		logger.FromContext(c.Request.Context()).Warn("login failed", "username", username, "error", "username and password required")
+		c.Redirect(http.StatusFound, "/login?error=username+and+password+required")
 		return
 	}
 
-	var user models.User
-	err := database.GetDB().QueryRow("SELECT id, username, role FROM users WHERE id = ?",
-		userID).Scan(&user.ID, &user.Username, &user.Role)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user info"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
-	})
-}
-
-// ListUsers handles listing all users (root only)
-func ListUsers(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can list users"})
-		return
-	}
-
-	rows, err := database.GetDB().Query("SELECT id, username, role FROM users")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
-		return
-	}
-	defer rows.Close()
-
-	var users []models.User
-	for rows.Next() {
-		var user models.User
-		err := rows.Scan(&user.ID, &user.Username, &user.Role)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan user"})
+	if username == h.config.AdminUsername {
+		if password != h.config.AdminPassword {
+			logger.FromContext(c.Request.Context()).Warn("login failed", "username", username, "error", "invalid credentials")
+			c.Redirect(http.StatusFound, "/login?error=Invalid+credentials")
 			return
 		}
-		// Don't include password in the response
-		user.Password = ""
-		users = append(users, user)
+		sessionID := middleware.GenerateSessionID()
+		middleware.GetSessionStore().SetSession(sessionID, username)
+		c.SetCookie("session_id", sessionID, int(24*time.Hour.Seconds()), "/", "", false, false)
+		logger.FromContext(c.Request.Context()).Info("login success", "username", username, "role", "admin")
+		c.Redirect(http.StatusFound, "/reservations")
+		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users})
+	u, err := h.user.GetByUsername(c.Request.Context(), username)
+	if err != nil || u == nil {
+		logger.FromContext(c.Request.Context()).Warn("login failed", "username", username, "error", "invalid credentials")
+		c.Redirect(http.StatusFound, "/login?error=Invalid+credentials")
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) != nil {
+		logger.FromContext(c.Request.Context()).Warn("login failed", "username", username, "error", "invalid credentials")
+		c.Redirect(http.StatusFound, "/login?error=Invalid+credentials")
+		return
+	}
+
+	sessionID := middleware.GenerateSessionID()
+	middleware.GetSessionStore().SetSession(sessionID, username)
+	c.SetCookie("session_id", sessionID, int(24*time.Hour.Seconds()), "/", "", false, false)
+	logger.FromContext(c.Request.Context()).Info("login success", "username", username)
+	c.Redirect(http.StatusFound, "/reservations")
 }
 
-// ChangePassword handles password changes for authenticated users
-func ChangePassword(c *gin.Context) {
-	var req models.ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("Invalid change password request", "error", err, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// RegisterPage renders the register form
+func (h *AuthHandler) RegisterPage(c *gin.Context) {
+	bd := baseData(c, h.user, h.config, "Register", "")
+	bd.Error = c.Query("error")
+	render(c, "register", bd)
+}
+
+// Register handles form POST
+func (h *AuthHandler) Register(c *gin.Context) {
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+	sshKey := c.PostForm("ssh_public_key")
+	if username == "" || password == "" || sshKey == "" {
+		c.Redirect(http.StatusFound, "/register?error=username+password+and+SSH+key+required")
+		return
+	}
+	if len(password) < 6 {
+		c.Redirect(http.StatusFound, "/register?error=password+must+be+at+least+6+characters")
+		return
+	}
+	if username == h.config.AdminUsername {
+		c.Redirect(http.StatusFound, "/register?error=username+not+allowed")
 		return
 	}
 
-	// Get user info from context
-	userID, exists := c.Get("userID")
-	if !exists {
-		slog.Warn("Password change attempt without authentication", "client_ip", c.ClientIP())
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	username, exists := c.Get("username")
-	if !exists {
-		slog.Warn("Password change attempt without username in context", "user_id", userID, "client_ip", c.ClientIP())
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	role, exists := c.Get("role")
-	if !exists {
-		slog.Warn("Password change attempt without role in context", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
-
-	slog.Info("Password change attempt", "user_id", userID, "username", username, "role", role, "client_ip", c.ClientIP())
-
-	// Validate required fields
-	if req.CurrentPassword == "" {
-		slog.Warn("Password change failed - current password required", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is required"})
-		return
-	}
-	if req.NewPassword == "" {
-		slog.Warn("Password change failed - new password required", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "New password is required"})
-		return
-	}
-	if len(req.NewPassword) < 6 {
-		slog.Warn("Password change failed - new password too short", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 6 characters long"})
-		return
-	}
-	if req.NewPassword == req.CurrentPassword {
-		slog.Warn("Password change failed - new password same as current", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be different from current password"})
-		return
-	}
-
-	// Get current password hash from database
-	var currentHashedPassword string
-	err := database.GetDB().QueryRow("SELECT password FROM users WHERE id = ?", userID).Scan(&currentHashedPassword)
+	_, err := h.user.CreateWithSSHKey(c.Request.Context(), username, password, sshKey)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			slog.Error("Password change failed - user not found", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		slog.Error("Database error during password change", "user_id", userID, "username", username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		logger.FromContext(c.Request.Context()).Warn("register failed", "username", username, "error", err)
+		c.Redirect(http.StatusFound, "/register?error=username+already+exists")
 		return
 	}
+	logger.FromContext(c.Request.Context()).Info("register success", "username", username)
+	c.Redirect(http.StatusFound, "/login")
+}
 
-	// Verify current password
-	err = bcrypt.CompareHashAndPassword([]byte(currentHashedPassword), []byte(req.CurrentPassword))
+// RegisterUser handles form POST (admin only) - creates regular user
+func (h *AuthHandler) RegisterUser(c *gin.Context) {
+	if !isAdmin(c, h.user, h.config) {
+		c.Redirect(http.StatusFound, "/users?error=Admin+required")
+		return
+	}
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+	sshKey := c.PostForm("ssh_public_key")
+	if username == "" || password == "" {
+		c.Redirect(http.StatusFound, "/users?error=username+and+password+required")
+		return
+	}
+	if len(password) < 6 {
+		c.Redirect(http.StatusFound, "/users?error=password+must+be+at+least+6+characters")
+		return
+	}
+	if username == h.config.AdminUsername {
+		c.Redirect(http.StatusFound, "/users?error=username+not+allowed")
+		return
+	}
+	_, err := h.user.CreateWithSSHKey(c.Request.Context(), username, password, sshKey)
 	if err != nil {
-		slog.Warn("Password change failed - current password incorrect", "user_id", userID, "username", username, "client_ip", c.ClientIP())
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password is incorrect"})
+		logger.FromContext(c.Request.Context()).Warn("register user failed", "username", username, "error", err)
+		c.Redirect(http.StatusFound, "/users?error=username+already+exists")
 		return
 	}
+	logger.FromContext(c.Request.Context()).Info("register user success", "username", username)
+	c.Redirect(http.StatusFound, "/users?success=User+registered")
+}
 
-	// Hash new password
-	newHashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+// RegisterAdmin handles form POST (admin only)
+func (h *AuthHandler) RegisterAdmin(c *gin.Context) {
+	if !isAdmin(c, h.user, h.config) {
+		c.Redirect(http.StatusFound, "/users?error=Admin+required")
+		return
+	}
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+	if username == "" || password == "" {
+		c.Redirect(http.StatusFound, "/users?error=username+and+password+required")
+		return
+	}
+	if len(password) < 6 {
+		c.Redirect(http.StatusFound, "/users?error=password+must+be+at+least+6+characters")
+		return
+	}
+	_, err := h.user.Create(c.Request.Context(), username, password, "admin")
 	if err != nil {
-		slog.Error("Failed to hash new password", "user_id", userID, "username", username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash new password"})
+		logger.FromContext(c.Request.Context()).Warn("register admin failed", "username", username, "error", err)
+		c.Redirect(http.StatusFound, "/users?error=username+already+exists")
 		return
 	}
+	logger.FromContext(c.Request.Context()).Info("register admin success", "username", username)
+	c.Redirect(http.StatusFound, "/users?success=Admin+registered")
+}
 
-	// Update password in database
-	_, err = database.GetDB().Exec("UPDATE users SET password = ? WHERE id = ?", string(newHashedPassword), userID)
-	if err != nil {
-		slog.Error("Failed to update password in database", "user_id", userID, "username", username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
-		return
+// Logout handles form POST
+func (h *AuthHandler) Logout(c *gin.Context) {
+	sessionID, _ := c.Cookie("session_id")
+	if sessionID != "" {
+		middleware.GetSessionStore().DeleteSession(sessionID)
 	}
-
-	slog.Info("Password changed successfully", "user_id", userID, "username", username, "role", role, "client_ip", c.ClientIP())
-	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+	c.SetCookie("session_id", "", -1, "/", "", false, false)
+	logger.FromContext(c.Request.Context()).Info("logout")
+	c.Redirect(http.StatusFound, "/servers")
 }

@@ -1,110 +1,130 @@
 package middleware
 
 import (
-	"log/slog"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtKey = []byte("your-secret-key") // In production, use environment variable
-
-// Claims represents the JWT claims
-type Claims struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	jwt.RegisteredClaims
+// Session represents an authenticated session
+type Session struct {
+	Username  string
+	ExpiresAt time.Time
 }
 
-// GenerateToken generates a new JWT token
-func GenerateToken(userID int64, username, role string) (string, error) {
-	claims := &Claims{
-		UserID:   userID,
-		Username: username,
-		Role:     role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
+// SessionStore manages active sessions
+type SessionStore struct {
+	sessions map[string]*Session
+	mu       sync.RWMutex
+}
+
+var globalSessionStore = &SessionStore{sessions: make(map[string]*Session)}
+
+// GetSessionStore returns the global session store
+func GetSessionStore() *SessionStore {
+	return globalSessionStore
+}
+
+func init() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			globalSessionStore.Cleanup()
+		}
+	}()
+}
+
+// GenerateSessionID generates a random session ID
+func GenerateSessionID() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+// SetSession creates a new session
+func (s *SessionStore) SetSession(sessionID string, username string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessions[sessionID] = &Session{Username: username, ExpiresAt: time.Now().Add(24 * time.Hour)}
+}
+
+// GetSession retrieves a session by ID
+func (s *SessionStore) GetSession(sessionID string) (*Session, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	session, exists := s.sessions[sessionID]
+	if !exists || time.Now().After(session.ExpiresAt) {
+		return nil, false
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtKey)
+	return session, true
 }
 
-// AuthMiddleware is a middleware for JWT authentication
+// DeleteSession removes a session
+func (s *SessionStore) DeleteSession(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessions, sessionID)
+}
+
+// Cleanup removes expired sessions
+func (s *SessionStore) Cleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for id, session := range s.sessions {
+		if now.After(session.ExpiresAt) {
+			delete(s.sessions, id)
+		}
+	}
+}
+
+// AuthMiddleware handles session-based authentication
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			slog.Warn("Authentication failed - missing authorization header", "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+		if isPublicEndpoint(c.Request.URL.Path, c.Request.Method) {
+			c.Next()
+			return
+		}
+		sessionID, err := c.Cookie("session_id")
+		if err != nil || sessionID == "" {
+			c.Redirect(http.StatusFound, "/login")
 			c.Abort()
 			return
 		}
-
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			slog.Warn("Authentication failed - invalid header format", "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+		session, exists := globalSessionStore.GetSession(sessionID)
+		if !exists {
+			c.Redirect(http.StatusFound, "/login")
 			c.Abort()
 			return
 		}
-
-		tokenString := parts[1]
-		claims := &Claims{}
-
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			return jwtKey, nil
-		})
-
-		if err != nil || !token.Valid {
-			slog.Warn("Authentication failed - invalid token", "path", c.Request.URL.Path, "client_ip", c.ClientIP(), "error", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
-			return
-		}
-
-		slog.Info("Authentication successful", "user_id", claims.UserID, "username", claims.Username, "role", claims.Role, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-		c.Set("userID", claims.UserID)
-		c.Set("username", claims.Username)
-		c.Set("role", claims.Role)
+		c.Set("username", session.Username)
+		c.Set("authenticated", true)
 		c.Next()
 	}
 }
 
-// AdminMiddleware is a middleware to check if the user is an admin
-func AdminMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		role, exists := c.Get("role")
-		username, _ := c.Get("username")
-		if !exists || role != "admin" {
-			slog.Warn("Admin access denied", "username", username, "role", role, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			c.Abort()
-			return
+func isPublicEndpoint(path, method string) bool {
+	_ = method
+	public := []string{"/", "/servers", "/login", "/register", "/logout", "/toggle-theme", "/ping", "/health"}
+	for _, p := range public {
+		if path == p {
+			return true
 		}
-		slog.Info("Admin access granted", "username", username, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-		c.Next()
 	}
+	return false
 }
 
-// RootMiddleware is a middleware to check if the user is root
-func RootMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		role, exists := c.Get("role")
-		username, _ := c.Get("username")
-		if !exists || role != "root" {
-			slog.Warn("Root access denied", "username", username, "role", role, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-			c.JSON(http.StatusForbidden, gin.H{"error": "Root access required"})
-			c.Abort()
-			return
-		}
-		slog.Info("Root access granted", "username", username, "path", c.Request.URL.Path, "client_ip", c.ClientIP())
-		c.Next()
+// GetCurrentUser retrieves the current user from context
+func GetCurrentUser(c *gin.Context) (string, bool) {
+	username, exists := c.Get("username")
+	if !exists {
+		return "", false
 	}
+	s, ok := username.(string)
+	return s, ok
 }

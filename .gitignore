@@ -25,8 +25,11 @@ go.work
 .DS_Store
 Thumbs.db
 
+# Environment (contains secrets)
+.env
+
 # Main database file
-server_scheduler.db
+serverscheduler.db
 
 # Logs
 *.log
@@ -37,7 +40,9 @@ docker-compose.override.yml
 
 data/*
 serverscheduler
+server
 frontend/node_modules
 frontend/dist
 *.out
 coverage.html
+server

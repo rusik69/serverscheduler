@@ -1,0 +1,184 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en" data-theme="{{.Theme}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - Server Scheduler</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-primary: #f5f5f5;
+      --bg-secondary: #fff;
+      --bg-tertiary: #f8f9fa;
+      --text-primary: #333;
+      --text-secondary: #666;
+      --border: #e0e0e0;
+      --border-light: #eee;
+      --hover-bg: #f0f0f0;
+      --active-bg: #e3f2fd;
+      --active-color: #1976d2;
+    }
+    [data-theme="dark"] {
+      --bg-primary: #1a1a1a;
+      --bg-secondary: #2d2d2d;
+      --bg-tertiary: #383838;
+      --text-primary: #e8e8e8;
+      --text-secondary: #b0b0b0;
+      --border: #404040;
+      --border-light: #404040;
+      --hover-bg: #383838;
+      --active-bg: #1e3a5f;
+      --active-color: #64b5f6;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg-primary); color: var(--text-primary); transition: background 0.2s, color 0.2s; min-height: 100vh; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 200px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      padding: 1rem;
+    }
+    .logo-link { font-weight: 600; font-size: 1.1rem; color: var(--text-primary); text-decoration: none; display: block; margin-bottom: 1.5rem; }
+    .nav { display: flex; flex-direction: column; gap: 0.25rem; }
+    .nav a {
+      padding: 0.5rem 0.75rem;
+      color: var(--text-secondary);
+      text-decoration: none;
+      border-radius: 6px;
+    }
+    .nav a:hover { background: var(--hover-bg); color: var(--text-primary); }
+    .nav a.active { background: var(--active-bg); color: var(--active-color); }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .header {
+      background: var(--bg-secondary);
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 1rem;
+    }
+    .username { color: var(--text-secondary); font-size: 0.9rem; }
+    .theme-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.6rem;
+      border-radius: 6px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+    }
+    .theme-btn:hover { opacity: 0.9; }
+    .content { flex: 1; padding: 1.5rem; }
+    .public-header {
+      background: var(--bg-secondary);
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .public-nav { display: flex; align-items: center; gap: 1rem; }
+.public-nav .nav-link { color: var(--text-secondary); text-decoration: none; padding: 0.5rem 0.75rem; border-radius: 6px; }
+.public-nav .nav-link:hover { background: var(--hover-bg); color: var(--text-primary); }
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+    .btn-danger { background: #dc3545; color: #fff; }
+    .btn-danger:hover { background: #c82333; }
+    .btn-primary { background: #1976d2; color: #fff; }
+    .btn-primary:hover { background: #1565c0; }
+    .login-page, .register-page {
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: calc(100vh - 60px);
+    }
+    .login-card, .register-card { max-width: 420px; width: 100%; }
+    .login-card h1, .register-card h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .register-link, .login-link { margin-top: 1rem; font-size: 0.9rem; }
+    .register-link a, .login-link a { color: #1976d2; }
+    .status-pending { color: #856404; }
+    .status-active { color: #155724; }
+    .status-expired { color: #6c757d; }
+    .status-cancelled { color: #721c24; }
+    .card {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border: 1px solid var(--border);
+    }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.25rem; font-weight: 500; color: var(--text-primary); }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    .form-group textarea { min-height: 100px; resize: vertical; }
+    .duration-btns { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .duration-btns .muted { margin-right: 0.25rem; }
+    .dur-btn { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); }
+    .dur-btn:hover { background: var(--hover-bg); }
+    .dur-btn.active { background: var(--active-bg); color: var(--active-color); border-color: var(--active-color); }
+    .error { color: #dc3545; font-size: 0.9rem; margin-top: 0.5rem; }
+    .success { color: #28a745; margin: 0.5rem 0; }
+    .muted { color: var(--text-secondary); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border-light); color: var(--text-primary); }
+    th { background: var(--bg-tertiary); font-weight: 600; }
+  </style>
+</head>
+<body>
+  {{if .IsAuthenticated}}
+  <div class="layout">
+    <aside class="sidebar">
+      <a href="/servers" class="logo-link">Server Scheduler</a>
+      <nav class="nav">
+        <a href="/reservations" class="{{if eq .NavActive "reservations"}}active{{end}}">Reservations</a>
+        <a href="/servers" class="{{if eq .NavActive "servers"}}active{{end}}">Servers</a>
+        <a href="/profile" class="{{if eq .NavActive "profile"}}active{{end}}">Profile</a>
+        {{if .IsAdmin}}<a href="/users" class="{{if eq .NavActive "users"}}active{{end}}">Users</a>{{end}}
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="header">
+        <span class="username">{{.Username}}</span>
+        <a href="/toggle-theme?redirect={{urlquery .CurrentPath}}" class="theme-btn" title="Toggle theme">{{if eq .Theme "dark"}}☀️{{else}}🌙{{end}}</a>
+        <form method="POST" action="/logout" style="display:inline"><button type="submit" class="btn btn-sm btn-danger">Logout</button></form>
+      </header>
+      <main class="content">{{template "content" .}}</main>
+    </div>
+  </div>
+  {{else}}
+  <header class="public-header">
+    <a href="/servers" class="logo-link">Server Scheduler</a>
+    <nav class="public-nav">
+      <a href="/toggle-theme?redirect={{urlquery .CurrentPath}}" class="theme-btn" title="Toggle theme">{{if eq .Theme "dark"}}☀️{{else}}🌙{{end}}</a>
+      <a href="/servers" class="nav-link">Servers</a>
+      <a href="/login" class="nav-link">Login</a>
+      <a href="/register" class="nav-link">Register</a>
+    </nav>
+  </header>
+  <main class="content">{{template "content" .}}</main>
+  {{end}}
+</body>
+</html>
+{{end}}

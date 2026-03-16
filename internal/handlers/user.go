@@ -1,357 +1,162 @@
 package handlers
 
 import (
-	"database/sql"
-	"log/slog"
+	"context"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rusik69/serverscheduler/internal/database"
+	"github.com/rusik69/serverscheduler/internal/config"
+	"github.com/rusik69/serverscheduler/internal/logger"
+	"github.com/rusik69/serverscheduler/internal/middleware"
 	"github.com/rusik69/serverscheduler/internal/models"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/rusik69/serverscheduler/internal/services"
+	"github.com/rusik69/serverscheduler/internal/templates"
 )
 
-// GetUsers returns all users (root only)
-func GetUsers(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can list users"})
-		return
-	}
-
-	username, _ := c.Get("username")
-	slog.Info("Fetching all users", "admin_user", username, "client_ip", c.ClientIP())
-
-	rows, err := database.GetDB().Query("SELECT id, username, role FROM users ORDER BY id")
-	if err != nil {
-		slog.Error("Failed to query users", "admin_user", username, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
-		return
-	}
-	defer rows.Close()
-
-	var users []models.User
-	for rows.Next() {
-		var user models.User
-		if err := rows.Scan(&user.ID, &user.Username, &user.Role); err != nil {
-			slog.Error("Failed to scan user row", "admin_user", username, "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan user"})
-			return
-		}
-		users = append(users, user)
-	}
-
-	slog.Info("Users fetched successfully", "admin_user", username, "count", len(users), "client_ip", c.ClientIP())
-	c.JSON(http.StatusOK, gin.H{"users": users})
+// UserHandler handles user/profile endpoints
+type UserHandler struct {
+	user        services.UserService
+	reservation services.ReservationService
+	server      services.ServerService
+	ssh         services.SSHService
+	config      config.Config
 }
 
-// GetUser returns a specific user (root only)
-func GetUser(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can view users"})
-		return
-	}
-
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		slog.Warn("Invalid user ID in get request", "id", idStr, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	adminUser, _ := c.Get("username")
-	slog.Info("Fetching user", "user_id", id, "admin_user", adminUser, "client_ip", c.ClientIP())
-
-	var user models.User
-	err = database.GetDB().QueryRow("SELECT id, username, role FROM users WHERE id = ?", id).Scan(
-		&user.ID, &user.Username, &user.Role)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			slog.Warn("User not found", "user_id", id, "admin_user", adminUser)
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
-		}
-		slog.Error("Failed to query user", "user_id", id, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
-		return
-	}
-
-	slog.Info("User fetched successfully", "user_id", id, "username", user.Username, "admin_user", adminUser, "client_ip", c.ClientIP())
-	c.JSON(http.StatusOK, user)
+// NewUserHandler creates a UserHandler
+func NewUserHandler(user services.UserService, res services.ReservationService, srv services.ServerService, ssh services.SSHService, cfg config.Config) *UserHandler {
+	return &UserHandler{user: user, reservation: res, server: srv, ssh: ssh, config: cfg}
 }
 
-// CreateUser creates a new user (root only)
-func CreateUser(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can create users"})
-		return
-	}
-
-	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-		Role     string `json:"role" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("Invalid user creation request", "error", err, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	adminUser, _ := c.Get("username")
-	slog.Info("User creation attempt", "new_username", req.Username, "role", req.Role, "admin_user", adminUser, "client_ip", c.ClientIP())
-
-	// Validate role
-	if req.Role != "user" && req.Role != "root" {
-		slog.Warn("User creation failed - invalid role", "role", req.Role, "admin_user", adminUser)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Role must be either 'user' or 'root'"})
-		return
-	}
-
-	// Check if username already exists
-	var userExists bool
-	err := database.GetDB().QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", req.Username).Scan(&userExists)
-	if err != nil {
-		slog.Error("Failed to check username existence", "username", req.Username, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check username"})
-		return
-	}
-
-	if userExists {
-		slog.Warn("User creation failed - username already exists", "username", req.Username, "admin_user", adminUser)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
-		return
-	}
-
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		slog.Error("Failed to hash password", "username", req.Username, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-		return
-	}
-
-	// Create user
-	result, err := database.GetDB().Exec(
-		"INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-		req.Username, string(hashedPassword), req.Role,
-	)
-	if err != nil {
-		slog.Error("Failed to create user in database", "username", req.Username, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-		return
-	}
-
-	id, _ := result.LastInsertId()
-	user := models.User{
-		ID:       id,
-		Username: req.Username,
-		Role:     req.Role,
-	}
-
-	slog.Info("User created successfully", "user_id", id, "username", req.Username, "role", req.Role, "admin_user", adminUser, "client_ip", c.ClientIP())
-	c.JSON(http.StatusCreated, user)
+// ProfileData for template
+type ProfileData struct {
+	Username     string
+	Role         string
+	SSHPublicKey string
 }
 
-// UpdateUser updates an existing user (root only)
-func UpdateUser(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can update users"})
+// ProfilePage renders the profile page
+func (h *UserHandler) ProfilePage(c *gin.Context) {
+	username, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.Redirect(http.StatusFound, "/login")
 		return
 	}
-
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		slog.Warn("Invalid user ID in update request", "id", idStr, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		slog.Warn("Invalid user update request", "error", err, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	adminUser, _ := c.Get("username")
-	adminUserID, _ := c.Get("userID")
-	slog.Info("User update attempt", "user_id", id, "admin_user", adminUser, "client_ip", c.ClientIP())
-
-	// Check if user exists
-	var currentUser models.User
-	err = database.GetDB().QueryRow("SELECT id, username, role FROM users WHERE id = ?", id).Scan(
-		&currentUser.ID, &currentUser.Username, &currentUser.Role)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			slog.Warn("User update failed - user not found", "user_id", id, "admin_user", adminUser)
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	logger.FromContext(c.Request.Context()).Debug("profile page load", "username", username)
+	bd := baseData(c, h.user, h.config, "Profile", "profile")
+	profile := ProfileData{Username: username, Role: "admin"}
+	if username != h.config.AdminUsername {
+		u, err := h.user.GetByUsername(c.Request.Context(), username)
+		if err != nil || u == nil {
+			c.Redirect(http.StatusFound, "/login")
 			return
 		}
-		slog.Error("Failed to query user for update", "user_id", id, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query user"})
-		return
+		profile = ProfileData{Username: u.Username, Role: u.Role, SSHPublicKey: u.SSHPublicKey}
 	}
-
-	// Prevent admins from modifying themselves (security measure)
-	if adminUserID == id {
-		slog.Warn("User update failed - cannot modify own account", "user_id", id, "admin_user", adminUser)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot modify your own account"})
-		return
-	}
-
-	// Build update query dynamically
-	var setParts []string
-	var args []interface{}
-
-	if req.Username != "" && req.Username != currentUser.Username {
-		// Check if new username already exists
-		var exists bool
-		err := database.GetDB().QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ? AND id != ?)", req.Username, id).Scan(&exists)
-		if err != nil {
-			slog.Error("Failed to check username existence", "username", req.Username, "admin_user", adminUser, "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check username"})
-			return
-		}
-		if exists {
-			slog.Warn("User update failed - username already exists", "username", req.Username, "admin_user", adminUser)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
-			return
-		}
-		setParts = append(setParts, "username = ?")
-		args = append(args, req.Username)
-		currentUser.Username = req.Username
-	}
-
-	if req.Password != "" {
-		// Hash new password
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			slog.Error("Failed to hash password", "user_id", id, "admin_user", adminUser, "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-			return
-		}
-		setParts = append(setParts, "password = ?")
-		args = append(args, string(hashedPassword))
-	}
-
-	if req.Role != "" && req.Role != currentUser.Role {
-		// Validate role
-		if req.Role != "user" && req.Role != "root" {
-			slog.Warn("User update failed - invalid role", "role", req.Role, "admin_user", adminUser)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role. Must be 'user' or 'root'"})
-			return
-		}
-		setParts = append(setParts, "role = ?")
-		args = append(args, req.Role)
-		currentUser.Role = req.Role
-	}
-
-	if len(setParts) == 0 {
-		slog.Info("User update - no changes provided", "user_id", id, "admin_user", adminUser)
-		c.JSON(http.StatusOK, currentUser)
-		return
-	}
-
-	// Update user
-	query := "UPDATE users SET " + strings.Join(setParts, ", ") + " WHERE id = ?"
-	args = append(args, id)
-
-	_, err = database.GetDB().Exec(query, args...)
-	if err != nil {
-		slog.Error("Failed to update user in database", "user_id", id, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-		return
-	}
-
-	slog.Info("User updated successfully", "user_id", id, "username", currentUser.Username, "role", currentUser.Role, "admin_user", adminUser, "client_ip", c.ClientIP())
-	c.JSON(http.StatusOK, currentUser)
+	data := struct {
+		templates.BaseData
+		Profile ProfileData
+		Error   string
+		Success string
+	}{BaseData: bd, Profile: profile, Error: c.Query("error"), Success: c.Query("success")}
+	render(c, "profile", data)
 }
 
-// DeleteUser deletes a user (root only)
-func DeleteUser(c *gin.Context) {
-	// Check if user is root
-	role, exists := c.Get("role")
-	if !exists || role != "root" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only root user can delete users"})
+// UpdateSSHKey handles form POST
+func (h *UserHandler) UpdateSSHKey(c *gin.Context) {
+	username, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.Redirect(http.StatusFound, "/login")
 		return
 	}
-
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		slog.Warn("Invalid user ID in delete request", "id", idStr, "client_ip", c.ClientIP())
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+	if username == h.config.AdminUsername {
+		c.Redirect(http.StatusFound, "/profile?error=admin+cannot+set+SSH+key")
 		return
 	}
+	sshKey := c.PostForm("ssh_public_key")
+	if err := h.user.UpdateSSHKey(c.Request.Context(), username, sshKey); err != nil {
+		logger.FromContext(c.Request.Context()).Error("update SSH key failed", "username", username, "error", err)
+		c.Redirect(http.StatusFound, "/profile?error="+err.Error())
+		return
+	}
+	logger.FromContext(c.Request.Context()).Info("SSH key updated", "username", username)
+	c.Redirect(http.StatusFound, "/profile?success=Saved")
+}
 
-	adminUser, _ := c.Get("username")
-	adminUserID, _ := c.Get("userID")
-	slog.Info("User deletion attempt", "user_id", id, "admin_user", adminUser, "client_ip", c.ClientIP())
-
-	// Check if user exists
-	var user models.User
-	err = database.GetDB().QueryRow("SELECT id, username, role FROM users WHERE id = ?", id).Scan(
-		&user.ID, &user.Username, &user.Role)
+// UsersPage renders the users list (admin only)
+func (h *UserHandler) UsersPage(c *gin.Context) {
+	if !isAdmin(c, h.user, h.config) {
+		c.Redirect(http.StatusFound, "/servers?error=admin+required")
+		return
+	}
+	logger.FromContext(c.Request.Context()).Debug("users page load")
+	list, err := h.user.List(c.Request.Context())
 	if err != nil {
-		if err == sql.ErrNoRows {
-			slog.Warn("User deletion failed - user not found", "user_id", id, "admin_user", adminUser)
-			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-			return
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	bd := baseData(c, h.user, h.config, "Users", "users")
+	data := struct {
+		templates.BaseData
+		Users         interface{}
+		AdminUsername string
+		Error         string
+		Success       string
+	}{BaseData: bd, Users: list, AdminUsername: h.config.AdminUsername, Error: c.Query("error"), Success: c.Query("success")}
+	render(c, "users", data)
+}
+
+// DeleteUser handles form POST (admin only)
+func (h *UserHandler) DeleteUser(c *gin.Context) {
+	if !isAdmin(c, h.user, h.config) {
+		c.Redirect(http.StatusFound, "/users?error=admin+required")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.Redirect(http.StatusFound, "/users?error=invalid+id")
+		return
+	}
+	u, err := h.user.GetByID(c.Request.Context(), id)
+	if err != nil || u == nil {
+		c.Redirect(http.StatusFound, "/users?error=user+not+found")
+		return
+	}
+	currentUser, _ := middleware.GetCurrentUser(c)
+	if u.Username == h.config.AdminUsername {
+		c.Redirect(http.StatusFound, "/users?error=cannot+delete+admin+user")
+		return
+	}
+	if u.Username == currentUser {
+		c.Redirect(http.StatusFound, "/users?error=cannot+delete+yourself")
+		return
+	}
+	// Revoke SSH access for active reservations, then delete all reservations for this user
+	userID := &u.ID
+	reservations, _ := h.reservation.List(c.Request.Context(), userID)
+	for _, r := range reservations {
+		if r.Status == "active" {
+			h.revokeAccess(c.Request.Context(), &r.Reservation)
 		}
-		slog.Error("Failed to query user for deletion", "user_id", id, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query user"})
+	}
+	_ = h.reservation.DeleteByUserID(c.Request.Context(), u.ID)
+	if err := h.user.Delete(c.Request.Context(), id); err != nil {
+		logger.FromContext(c.Request.Context()).Error("delete user failed", "user_id", id, "username", u.Username, "error", err)
+		c.Redirect(http.StatusFound, "/users?error="+err.Error())
 		return
 	}
+	logger.FromContext(c.Request.Context()).Info("user deleted", "user_id", id, "username", u.Username)
+	c.Redirect(http.StatusFound, "/users?success=User+removed")
+}
 
-	// Prevent admins from deleting themselves
-	if adminUserID == id {
-		slog.Warn("User deletion failed - cannot delete own account", "user_id", id, "admin_user", adminUser)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete your own account"})
+func (h *UserHandler) revokeAccess(ctx context.Context, r *models.Reservation) {
+	usr, _ := h.user.GetByID(ctx, r.UserID)
+	if usr == nil || usr.SSHPublicKey == "" {
 		return
 	}
-
-	// Check for active reservations
-	var reservationCount int
-	err = database.GetDB().QueryRow("SELECT COUNT(*) FROM reservations WHERE user_id = ? AND status = 'active'", id).Scan(&reservationCount)
-	if err != nil {
-		slog.Error("Failed to check user reservations", "user_id", id, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check user reservations"})
+	srv, _ := h.server.Get(ctx, r.ServerID)
+	if srv == nil {
 		return
 	}
-
-	if reservationCount > 0 {
-		slog.Warn("User deletion failed - user has active reservations", "user_id", id, "username", user.Username, "reservation_count", reservationCount, "admin_user", adminUser)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete user with active reservations"})
-		return
-	}
-
-	// Delete user
-	_, err = database.GetDB().Exec("DELETE FROM users WHERE id = ?", id)
-	if err != nil {
-		slog.Error("Failed to delete user from database", "user_id", id, "admin_user", adminUser, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
-		return
-	}
-
-	slog.Info("User deleted successfully", "user_id", id, "username", user.Username, "admin_user", adminUser, "client_ip", c.ClientIP())
-	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+	_ = h.ssh.RemoveKey(ctx, srv.Hostname, srv.Port, srv.SSHUser, srv.SSHPrivateKey, usr.SSHPublicKey)
 }

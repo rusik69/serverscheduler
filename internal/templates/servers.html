@@ -1,0 +1,75 @@
+{{define "content"}}
+<div>
+  <h2>Servers</h2>
+  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+  {{if .Success}}<div class="success">{{.Success}}</div>{{end}}
+  {{if .IsAdmin}}
+  <div class="card">
+    <h3>Add Server</h3>
+    <form method="POST" action="/servers/add">
+      <div class="form-group">
+        <label>Name (used as hostname)</label>
+        <input name="name" required placeholder="e.g. dev-server-1 or 192.168.1.10" />
+      </div>
+      <div class="form-group">
+        <label>Port</label>
+        <input name="port" type="number" value="22" placeholder="22" />
+      </div>
+      <div class="form-group">
+        <label>SSH User</label>
+        <input name="ssh_user" required placeholder="e.g. root" />
+      </div>
+      <div class="form-group">
+        <label>SSH Private Key (PEM)</label>
+        <textarea name="ssh_private_key" required placeholder="-----BEGIN ..." rows="6"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input name="description" placeholder="Optional" />
+      </div>
+      <button type="submit" class="btn btn-primary">Add Server</button>
+    </form>
+  </div>
+  {{end}}
+  <div class="card">
+    <h3>Server List</h3>
+    {{if .Servers}}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Port</th>
+          <th>SSH User</th>
+          <th>Description</th>
+          <th>Users with access</th>
+          {{if .IsAdmin}}<th>Actions</th>{{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Servers}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td>{{.Port}}</td>
+          <td>{{.SSHUser}}</td>
+          <td>{{or .Description "-"}}</td>
+          <td>{{if .Users}}{{join .Users ", "}}{{else}}-{{end}}</td>
+          {{if $.IsAdmin}}
+          <td>
+            <form method="POST" action="/servers/{{.ID}}/test" style="display:inline">
+              <button type="submit" class="btn btn-sm btn-primary">Test</button>
+            </form>
+            <form method="POST" action="/servers/{{.ID}}/delete" style="display:inline;margin-left:0.5rem" onsubmit="return confirm('Delete this server?')">
+              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p>No servers yet.</p>
+    {{end}}
+  </div>
+</div>
+{{end}}
