@@ -1,4 +1,7 @@
-.PHONY: build dev test docker-build podman-build podman-run podman-stop docker-compose-up docker-compose-down ensure-env
+DEPLOY_HOST ?= ubuntu@172.19.112.136
+DEPLOY_PATH ?= ~/serverscheduler
+
+.PHONY: build dev test docker-build podman-build podman-run podman-stop docker-compose-up docker-compose-down ensure-env deploy deploy-deps
 
 build:
 	CGO_ENABLED=1 go build -o server ./cmd/server
@@ -37,3 +40,14 @@ docker-compose-up: ensure-env
 
 docker-compose-down:
 	docker compose down
+
+# Deploy to remote host via SSH (DEPLOY_HOST=user@host)
+deploy-deps:
+	@test -n "$(DEPLOY_HOST)" || (echo "Set DEPLOY_HOST=user@host" && exit 1)
+	ssh $(DEPLOY_HOST) "curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker \$$USER"
+
+deploy: ensure-env
+	@test -n "$(DEPLOY_HOST)" || (echo "Set DEPLOY_HOST=user@host" && exit 1)
+	@ssh $(DEPLOY_HOST) "command -v docker >/dev/null 2>&1" || (echo "Docker not found on $(DEPLOY_HOST). Install: https://docs.docker.com/engine/install/" && exit 1)
+	rsync -avz --exclude '.git' --exclude 'data' --exclude '/server' ./ $(DEPLOY_HOST):$(DEPLOY_PATH)/
+	ssh $(DEPLOY_HOST) "cd $(DEPLOY_PATH) && sudo docker compose up -d --build"

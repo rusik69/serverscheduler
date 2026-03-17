@@ -24,6 +24,8 @@ dist/
 
 # Data directory
 data/
+.env
+.env.*
 
 # Node modules (will be installed in container)
 node_modules/

@@ -30,7 +30,13 @@ func Execute(w io.Writer, name string, data interface{}) error {
 			if t.IsZero() {
 				return "-"
 			}
-			return t.Format("2006-01-02 15:04")
+			return t.UTC().Format("2006-01-02 15:04 UTC")
+		},
+		"formatTimeISO": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.UTC().Format(time.RFC3339)
 		},
 		"join": strings.Join,
 	}

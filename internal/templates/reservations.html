@@ -14,11 +14,11 @@
         </select>
       </div>
       <div class="form-group">
-        <label>Start</label>
+        <label>Start <span class="muted">(UTC)</span></label>
         <input name="start_time" type="datetime-local" required />
       </div>
       <div class="form-group">
-        <label>End</label>
+        <label>End <span class="muted">(UTC)</span></label>
         <input name="end_time" type="datetime-local" required />
         <div class="duration-btns">
           <span class="muted">Duration:</span>
@@ -52,11 +52,11 @@
         </select>
       </div>
       <div class="form-group">
-        <label>Start</label>
+        <label>Start <span class="muted">(UTC)</span></label>
         <input name="start_time" type="datetime-local" required />
       </div>
       <div class="form-group">
-        <label>End</label>
+        <label>End <span class="muted">(UTC)</span></label>
         <input name="end_time" type="datetime-local" required />
         <div class="duration-btns">
           <span class="muted">Duration:</span>
@@ -91,8 +91,8 @@
         <tr>
           <td>{{.ServerName}}</td>
           <td>{{.Username}}</td>
-          <td>{{formatTime .StartTime}}</td>
-          <td>{{formatTime .EndTime}}</td>
+          <td data-utc="{{formatTimeISO .StartTime}}">{{formatTime .StartTime}}</td>
+          <td data-utc="{{formatTimeISO .EndTime}}">{{formatTime .EndTime}}</td>
           <td><span class="status-{{.Status}}">{{.Status}}</span></td>
           <td>
             {{if or (eq .Status "pending") (eq .Status "active")}}
@@ -114,9 +114,20 @@
 <script>
 (function() {
   function pad(n) { return String(n).padStart(2, '0'); }
-  function toLocalISO(d) {
-    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  function toUTCISO(d) {
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth()+1) + '-' + pad(d.getUTCDate()) + 'T' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
   }
+  function formatTimeDisplay(isoStr) {
+    if (!isoStr) return '-';
+    var d = new Date(isoStr);
+    var utc = d.getUTCFullYear() + '-' + pad(d.getUTCMonth()+1) + '-' + pad(d.getUTCDate()) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' UTC';
+    var local = d.toLocaleString(undefined, {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+    return utc + '<br><small class="muted">local: ' + local + '</small>';
+  }
+  document.querySelectorAll('[data-utc]').forEach(function(el) {
+    var iso = el.getAttribute('data-utc');
+    if (iso) el.innerHTML = formatTimeDisplay(iso);
+  });
   function roundUp15(d) {
     var m = d.getMinutes();
     d.setMinutes(m % 15 === 0 ? m : m + (15 - m % 15));
@@ -137,16 +148,16 @@
     var startVal = roundUp15(new Date(now));
     if (startVal <= now) startVal.setMinutes(startVal.getMinutes() + 15);
     var endVal = addHours(startVal, 1);
-    start.value = toLocalISO(startVal);
-    end.value = toLocalISO(endVal);
-    start.min = toLocalISO(now);
-    end.min = toLocalISO(startVal);
+    start.value = toUTCISO(startVal);
+    end.value = toUTCISO(endVal);
+    start.min = toUTCISO(now);
+    end.min = toUTCISO(startVal);
     durBtns.forEach(function(btn) { btn.classList.remove('active'); });
     durBtns[0].classList.add('active');
     function setEndFromDuration(hours) {
-      var s = new Date(start.value);
-      end.value = toLocalISO(addHours(s, hours));
-      end.min = toLocalISO(s);
+      var s = new Date(start.value + 'Z');
+      end.value = toUTCISO(addHours(s, hours));
+      end.min = toUTCISO(s);
       durBtns.forEach(function(b) { b.classList.remove('active'); });
       var match = form.querySelector('.dur-btn[data-hours="' + hours + '"]');
       if (match) match.classList.add('active');
@@ -157,13 +168,13 @@
       });
     });
     start.addEventListener('change', function() {
-      var s = new Date(start.value);
-      var e = new Date(end.value);
-      end.min = toLocalISO(s);
+      var s = new Date(start.value + 'Z');
+      var e = new Date(end.value + 'Z');
+      end.min = toUTCISO(s);
       if (e <= s) {
         var active = form.querySelector('.dur-btn.active');
         var h = active ? parseInt(active.getAttribute('data-hours'), 10) : 1;
-        end.value = toLocalISO(addHours(s, h));
+        end.value = toUTCISO(addHours(s, h));
       }
     });
   }
@@ -191,7 +202,7 @@
         }
         var html = '<table><thead><tr><th>Server</th><th>User</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead><tbody id="reservations-tbody">';
         data.forEach(function(r) {
-          html += '<tr><td>' + escapeHtml(r.server_name) + '</td><td>' + escapeHtml(r.username) + '</td><td>' + escapeHtml(r.start_formatted) + '</td><td>' + escapeHtml(r.end_formatted) + '</td><td><span class="status-' + escapeHtml(r.status) + '">' + escapeHtml(r.status) + '</span></td><td>';
+          html += '<tr><td>' + escapeHtml(r.server_name) + '</td><td>' + escapeHtml(r.username) + '</td><td>' + formatTimeDisplay(r.start_utc) + '</td><td>' + formatTimeDisplay(r.end_utc) + '</td><td><span class="status-' + escapeHtml(r.status) + '">' + escapeHtml(r.status) + '</span></td><td>';
           if (r.can_cancel) {
             html += '<form method="POST" action="/reservations/' + r.id + '/cancel" style="display:inline" onsubmit="return confirm(\'Cancel this reservation?\')"><button type="submit" class="btn btn-sm btn-danger">Cancel</button></form>';
           }

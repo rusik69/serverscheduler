@@ -8,8 +8,12 @@
     <h3>Add Server</h3>
     <form method="POST" action="/servers/add">
       <div class="form-group">
-        <label>Name (used as hostname)</label>
-        <input name="name" required placeholder="e.g. dev-server-1 or 192.168.1.10" />
+        <label>Name</label>
+        <input name="name" required placeholder="e.g. dev-server-1" />
+      </div>
+      <div class="form-group">
+        <label>Host</label>
+        <input name="hostname" required placeholder="e.g. 192.168.1.10 or server.example.com" />
       </div>
       <div class="form-group">
         <label>Port</label>
@@ -38,22 +42,37 @@
       <thead>
         <tr>
           <th>Name</th>
+          <th>Host</th>
           <th>Port</th>
           <th>SSH User</th>
           <th>Description</th>
-          <th>Users with access</th>
-          {{if .IsAdmin}}<th>Actions</th>{{end}}
+          <th>Status</th>
+          {{if .IsAdmin}}<th>Users with access</th><th>Actions</th>{{end}}
         </tr>
       </thead>
       <tbody>
         {{range .Servers}}
         <tr>
           <td>{{.Name}}</td>
+          <td>{{.Hostname}}</td>
           <td>{{.Port}}</td>
           <td>{{.SSHUser}}</td>
           <td>{{or .Description "-"}}</td>
-          <td>{{if .Users}}{{join .Users ", "}}{{else}}-{{end}}</td>
+          <td>
+            {{if .CurrentReservation}}
+              {{if eq .CurrentReservation.Status "active"}}
+                <span class="status-active">Reserved</span> by {{.CurrentReservation.Username}}<br>
+                <small class="muted">until {{formatTime .CurrentReservation.EndTime}}</small>
+              {{else}}
+                <span class="status-pending">Reserved</span> by {{.CurrentReservation.Username}}<br>
+                <small class="muted">from {{formatTime .CurrentReservation.StartTime}} &ndash; {{formatTime .CurrentReservation.EndTime}}</small>
+              {{end}}
+            {{else}}
+              <span class="status-free">Free</span>
+            {{end}}
+          </td>
           {{if $.IsAdmin}}
+          <td>{{if .Users}}{{join .Users ", "}}{{else}}-{{end}}</td>
           <td>
             <form method="POST" action="/servers/{{.ID}}/test" style="display:inline">
               <button type="submit" class="btn btn-sm btn-primary">Test</button>

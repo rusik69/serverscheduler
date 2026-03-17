@@ -37,6 +37,8 @@ type reservationDataItem struct {
 	Username        string `json:"username"`
 	StartFormatted  string `json:"start_formatted"`
 	EndFormatted    string `json:"end_formatted"`
+	StartUTC        string `json:"start_utc"`
+	EndUTC          string `json:"end_utc"`
 	Status          string `json:"status"`
 	CanCancel       bool   `json:"can_cancel"`
 }
@@ -64,11 +66,15 @@ func (h *ReservationHandler) ReservationsData(c *gin.Context) {
 	for i, r := range reservations {
 		startFmt := "-"
 		endFmt := "-"
+		startISO := ""
+		endISO := ""
 		if !r.StartTime.IsZero() {
-			startFmt = r.StartTime.Format("2006-01-02 15:04")
+			startFmt = r.StartTime.UTC().Format("2006-01-02 15:04 UTC")
+			startISO = r.StartTime.UTC().Format(time.RFC3339)
 		}
 		if !r.EndTime.IsZero() {
-			endFmt = r.EndTime.Format("2006-01-02 15:04")
+			endFmt = r.EndTime.UTC().Format("2006-01-02 15:04 UTC")
+			endISO = r.EndTime.UTC().Format(time.RFC3339)
 		}
 		items[i] = reservationDataItem{
 			ID:             r.ID,
@@ -76,6 +82,8 @@ func (h *ReservationHandler) ReservationsData(c *gin.Context) {
 			Username:       r.Username,
 			StartFormatted: startFmt,
 			EndFormatted:   endFmt,
+			StartUTC:       startISO,
+			EndUTC:         endISO,
 			Status:        r.Status,
 			CanCancel:     r.Status == "pending" || r.Status == "active",
 		}
@@ -150,12 +158,12 @@ func (h *ReservationHandler) AddReservation(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/reservations?error=start+and+end+time+required")
 		return
 	}
-	start, err := parseDateTimeLocal(startStr)
+	start, err := parseDateTimeUTC(startStr)
 	if err != nil {
 		c.Redirect(http.StatusFound, "/reservations?error=invalid+start_time")
 		return
 	}
-	end, err := parseDateTimeLocal(endStr)
+	end, err := parseDateTimeUTC(endStr)
 	if err != nil {
 		c.Redirect(http.StatusFound, "/reservations?error=invalid+end_time")
 		return
@@ -164,7 +172,7 @@ func (h *ReservationHandler) AddReservation(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/reservations?error=end+must+be+after+start")
 		return
 	}
-	if start.Before(time.Now()) {
+	if start.Before(time.Now().UTC()) {
 		c.Redirect(http.StatusFound, "/reservations?error=start+time+cannot+be+in+the+past")
 		return
 	}
@@ -208,7 +216,7 @@ func (h *ReservationHandler) CancelReservation(c *gin.Context) {
 			return
 		}
 	}
-	if r.Status == "active" {
+	if r.Status == "active" || r.Status == "pending" {
 		h.revokeAccess(c.Request.Context(), r)
 	}
 	if isAdmin(c, h.user, h.config) {
@@ -266,12 +274,12 @@ func (h *ReservationHandler) AdminAddReservation(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/reservations?error=start+and+end+time+required")
 		return
 	}
-	start, err := parseDateTimeLocal(startStr)
+	start, err := parseDateTimeUTC(startStr)
 	if err != nil {
 		c.Redirect(http.StatusFound, "/reservations?error=invalid+start_time")
 		return
 	}
-	end, err := parseDateTimeLocal(endStr)
+	end, err := parseDateTimeUTC(endStr)
 	if err != nil {
 		c.Redirect(http.StatusFound, "/reservations?error=invalid+end_time")
 		return
@@ -280,7 +288,7 @@ func (h *ReservationHandler) AdminAddReservation(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/reservations?error=end+must+be+after+start")
 		return
 	}
-	if start.Before(time.Now()) {
+	if start.Before(time.Now().UTC()) {
 		c.Redirect(http.StatusFound, "/reservations?error=start+time+cannot+be+in+the+past")
 		return
 	}
@@ -299,12 +307,12 @@ func (h *ReservationHandler) AdminAddReservation(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/reservations")
 }
 
-// parseDateTimeLocal parses datetime-local value as local time
-func parseDateTimeLocal(s string) (time.Time, error) {
+// parseDateTimeUTC parses datetime-local value as UTC
+func parseDateTimeUTC(s string) (time.Time, error) {
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02T15:04:05"} {
-		t, err := time.ParseInLocation(layout, s, time.Local)
+		t, err := time.Parse(layout, s)
 		if err == nil {
-			return t, nil
+			return t.UTC(), nil
 		}
 	}
 	return time.Time{}, errors.New("invalid datetime format")

@@ -16,7 +16,8 @@ import (
 // ServerWithUsers extends Server with users who have access (pending/active reservations)
 type ServerWithUsers struct {
 	models.Server
-	Users []string
+	Users               []string
+	CurrentReservation  *models.ReservationWithDetails
 }
 
 // ServerHandler handles server endpoints
@@ -41,9 +42,14 @@ func (h *ServerHandler) ServersPage(c *gin.Context) {
 		return
 	}
 	usersByServer, _ := h.reservation.GetUsersByServer(c.Request.Context())
+	currentByServer, _ := h.reservation.GetCurrentByServer(c.Request.Context())
 	serversWithUsers := make([]ServerWithUsers, len(list))
 	for i, s := range list {
-		serversWithUsers[i] = ServerWithUsers{Server: s, Users: usersByServer[s.ID]}
+		serversWithUsers[i] = ServerWithUsers{
+			Server:              s,
+			Users:               usersByServer[s.ID],
+			CurrentReservation:  currentByServer[s.ID],
+		}
 	}
 	bd := baseData(c, h.user, h.config, "Servers", "servers")
 	data := struct {
@@ -62,10 +68,11 @@ func (h *ServerHandler) AddServer(c *gin.Context) {
 		return
 	}
 	name := c.PostForm("name")
+	hostname := c.PostForm("hostname")
 	sshUser := c.PostForm("ssh_user")
 	sshKey := c.PostForm("ssh_private_key")
-	if name == "" || sshUser == "" || sshKey == "" {
-		c.Redirect(http.StatusFound, "/servers?error=name+ssh_user+and+ssh_private_key+required")
+	if name == "" || hostname == "" || sshUser == "" || sshKey == "" {
+		c.Redirect(http.StatusFound, "/servers?error=name+hostname+ssh_user+and+ssh_private_key+required")
 		return
 	}
 	port := 22
@@ -76,13 +83,13 @@ func (h *ServerHandler) AddServer(c *gin.Context) {
 	}
 	srv := &models.Server{
 		Name:          name,
-		Hostname:      name,
+		Hostname:      hostname,
 		Port:          port,
 		SSHUser:       sshUser,
 		SSHPrivateKey: sshKey,
 		Description:   c.PostForm("description"),
 	}
-	if err := h.ssh.TestConnection(c.Request.Context(), name, port, sshUser, sshKey); err != nil {
+	if err := h.ssh.TestConnection(c.Request.Context(), hostname, port, sshUser, sshKey); err != nil {
 		logger.FromContext(c.Request.Context()).Error("add server SSH test failed", "name", name, "error", err)
 		c.Redirect(http.StatusFound, "/servers?error="+url.QueryEscape("SSH connection failed: "+err.Error()))
 		return

@@ -39,6 +39,7 @@ type ReservationService interface {
 	Activate(ctx context.Context, id int64) error
 	Expire(ctx context.Context, id int64) error
 	GetUsersByServer(ctx context.Context) (map[int64][]string, error)
+	GetCurrentByServer(ctx context.Context) (map[int64]*models.ReservationWithDetails, error)
 }
 
 // SSHService manages SSH keys on remote servers
